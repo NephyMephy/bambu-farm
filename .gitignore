@@ -25,3 +25,7 @@ bambu/styles.css
 /docker/bambu-liveview/bambu-web-*
 /docker/bambu-liveview/compose.yml
 /docker/bambu-liveview/mediamtx.yml
+
+# Rust API
+/rust-api/target/
+/rust-api/.env
