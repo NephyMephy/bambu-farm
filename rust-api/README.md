@@ -12,23 +12,58 @@ Rust web API for LAN-mode Bambu printer live feed orchestration.
 - Per-printer stream process control (FFmpeg -> MediaMTX)
 - WebRTC URL retrieval for active streams
 - Designed to scale to 20+ printers with concurrency guardrails
+- Cross-platform: Linux, macOS, and Windows
 
 ## Requirements
 
 - Rust stable toolchain
-- ffmpeg installed
+- ffmpeg installed (on Windows: install and add to PATH, or set `FFMPEG_BIN` to full path)
 - MediaMTX running and reachable
 - Printers with LAN mode liveview enabled
 
 ## Quick Start
 
-1. Copy environment file and edit values.
-2. Start service.
+### Linux / macOS
 
 ```bash
 cd rust-api
 cp .env.example .env
+# Edit .env with your values
 export $(grep -v '^#' .env | xargs)
+cargo run
+```
+
+### Windows (PowerShell)
+
+```powershell
+cd rust-api
+copy .env.example .env
+# Edit .env with your values, then load env vars:
+Get-Content .env | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '=' } | ForEach-Object {
+    $name, $value = $_.Split('=', 2)
+    Set-Item -Path "env:$name" -Value $value
+}
+cargo run
+```
+
+Or set env vars inline:
+
+```powershell
+$env:API_KEY = "mysecret"; $env:MEDIAMTX_RTSP_PUBLISH = "rtsp://127.0.0.1:8554"; cargo run
+```
+
+### Windows (Command Prompt)
+
+```cmd
+cd rust-api
+copy .env.example .env
+rem Edit .env, then set each variable:
+set API_BIND=0.0.0.0:8080
+set API_KEY=mysecret
+set FFMPEG_BIN=ffmpeg
+set MEDIAMTX_RTSP_PUBLISH=rtsp://127.0.0.1:8554
+set WEBRTC_URL_TEMPLATE=http://127.0.0.1:8889/{id}/
+set MAX_CONCURRENT_STREAMS=25
 cargo run
 ```
 
@@ -75,12 +110,46 @@ cargo run --bin bambu -- init
 
 The CLI reads `BAMBU_API_URL` and `BAMBU_API_KEY` from environment, or use `--url` and `--key` flags.
 
+**Windows examples:**
+
+```powershell
+# PowerShell — set env vars
+$env:BAMBU_API_URL = "http://127.0.0.1:8080"
+$env:BAMBU_API_KEY = "mysecret"
+cargo run --bin bambu -- list
+```
+
+```cmd
+REM Command Prompt — set env vars
+set BAMBU_API_URL=http://127.0.0.1:8080
+set BAMBU_API_KEY=mysecret
+cargo run --bin bambu -- list
+```
+
+```powershell
+# Or use flags (works on all platforms)
+cargo run --bin bambu -- --url http://127.0.0.1:8080 --key mysecret list
+```
+
 ## Printers Config File
 
 You can pre-load printers on startup by setting `PRINTERS_FILE` to a JSON file path:
 
+**Linux / macOS:**
 ```bash
 PRINTERS_FILE=printers.json cargo run
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:PRINTERS_FILE = "printers.json"
+cargo run
+```
+
+**Windows (cmd):**
+```cmd
+set PRINTERS_FILE=printers.json
+cargo run
 ```
 
 Example `printers.json`:
@@ -196,14 +265,34 @@ Response:
 }
 ```
 
+## Testing
+
+**Linux / macOS:**
+```bash
+bash test-api.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\test-api.ps1
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_BIND` | `0.0.0.0:8080` | Bind address for the HTTP server |
 | `API_KEY` | `change-me` | Bearer token for authenticated endpoints |
-| `FFMPEG_BIN` | `ffmpeg` | Path to ffmpeg binary |
+| `FFMPEG_BIN` | `ffmpeg` | Path to ffmpeg binary (Windows: use full path e.g. `C:\tools\ffmpeg\bin\ffmpeg.exe`) |
 | `MEDIAMTX_RTSP_PUBLISH` | `rtsp://127.0.0.1:8554` | MediaMTX RTSP publish base URL |
 | `WEBRTC_URL_TEMPLATE` | `http://127.0.0.1:8889/{id}/` | WebRTC URL template (`{id}` = printer ID) |
 | `MAX_CONCURRENT_STREAMS` | `25` | Max concurrent FFmpeg processes |
 | `PRINTERS_FILE` | _(none)_ | Path to JSON file with printer definitions (loaded on startup) |
+
+## Windows Notes
+
+- **FFmpeg**: Download from [ffmpeg.org](https://ffmpeg.org/download.html), extract, and either add to `PATH` or set `FFMPEG_BIN` to the full executable path (e.g. `C:\tools\ffmpeg\bin\ffmpeg.exe`)
+- **MediaMTX**: Download the Windows binary from [github.com/bluenviron/mediamtx/releases](https://github.com/bluenviron/mediamtx/releases)
+- **Process management**: The API uses `taskkill /F /T /PID` on Windows to properly kill FFmpeg process trees (prevents orphaned processes)
+- **Graceful shutdown**: Ctrl+C works on all platforms; SIGTERM is only available on Unix
+- **Test script**: Use `test-api.ps1` (PowerShell) instead of `test-api.sh` (bash)

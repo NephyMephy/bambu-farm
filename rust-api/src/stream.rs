@@ -1,10 +1,16 @@
 use crate::config::Settings;
 use crate::models::{PrinterRecord, StreamState};
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
+
+/// On Windows, create ffmpeg in a new process group so we can kill the tree.
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 
 pub struct WorkerManager {
     workers: Mutex<HashMap<String, WorkerProc>>,
@@ -93,6 +99,9 @@ impl WorkerManager {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+
         let child = cmd
             .spawn()
             .map_err(|e| format!("failed to start ffmpeg: {e}"))?;
@@ -115,11 +124,7 @@ impl WorkerManager {
             return Ok(StreamState::Stopped);
         };
 
-        worker
-            .child
-            .kill()
-            .await
-            .map_err(|e| format!("failed to stop stream worker: {e}"))?;
+        kill_process_tree(&mut worker.child).await?;
 
         Ok(StreamState::Stopped)
     }
@@ -140,4 +145,38 @@ impl WorkerManager {
     pub fn rtsp_publish_url(printer: &PrinterRecord, settings: &Settings) -> String {
         format!("{}/{}", settings.mediamtx_rtsp_publish, printer.id)
     }
+}
+
+/// Kill a child process and its entire process tree.
+/// On Unix, `child.kill()` sends SIGKILL to the process group.
+/// On Windows, we use `taskkill /F /T /PID` to kill the tree.
+async fn kill_process_tree(child: &mut Child) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        child
+            .kill()
+            .await
+            .map_err(|e| format!("failed to stop stream worker: {e}"))?;
+    }
+
+    #[cfg(windows)]
+    {
+        // Try graceful kill first via taskkill /T (tree) /F (force)
+        if let Some(id) = child.id() {
+            let output = tokio::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &id.to_string()])
+                .output()
+                .await
+                .map_err(|e| format!("failed to run taskkill: {e}"))?;
+
+            if !output.status.success() {
+                // Fallback: try the standard kill
+                let _ = child.kill().await;
+            }
+        } else {
+            // Process already exited
+        }
+    }
+
+    Ok(())
 }
