@@ -10,6 +10,18 @@
 >
 > Check the [Cloud Section](#cloud-section) about enabling cloud mode
 
+cd rust-api
+copy .env.example .env
+# Edit .env with your values (API_KEY, MediaMTX URL, etc.)
+
+# Load env vars from .env
+Get-Content .env | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '=' } | ForEach-Object {
+    $name, $value = $_.Split('=', 2)
+    Set-Item -Path "env:$name" -Value $value
+}
+
+cargo run
+
 
 # Bambu Farm
 [![ko-fi](https://img.shields.io/static/v1?label=Support+me+on&message=Ko-fi&logo=ko-fi&color=%23FF5E5B&style=for-the-badge)](https://ko-fi.com/tfyre)
