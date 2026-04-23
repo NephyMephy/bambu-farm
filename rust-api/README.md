@@ -208,7 +208,8 @@ curl -X POST http://127.0.0.1:8080/v1/printers \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 $body = @{
     id = "printer-1"
     host = "10.0.0.10"
@@ -230,7 +231,8 @@ curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers -Headers $headers
 ```
 
@@ -243,7 +245,8 @@ curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/print
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Headers $headers
 ```
 
@@ -257,7 +260,8 @@ curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/start \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/start `
   -Method Post -Headers $headers
 ```
@@ -272,7 +276,8 @@ curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/stop \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/stop `
   -Method Post -Headers $headers
 ```
@@ -286,7 +291,8 @@ curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/print
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/url -Headers $headers
 ```
 
@@ -300,7 +306,8 @@ curl -X DELETE http://127.0.0.1:8080/v1/printers/printer-1 \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 `
   -Method Delete -Headers $headers
 ```
@@ -336,7 +343,8 @@ curl -X POST http://127.0.0.1:8080/v1/printers/batch \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$apiKey = $env:API_KEY
+$headers = @{ "Authorization" = "Bearer $apiKey" }
 $body = @{
     printers = @(
         @{ id = "p1"; host = "10.0.0.1"; device_id = "DEV001"; access_code = "11111111" },
