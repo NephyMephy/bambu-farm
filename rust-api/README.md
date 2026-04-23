@@ -4,7 +4,6 @@ Rust web API for LAN-mode Bambu printer live feed orchestration.
 
 ## Scope
 
-- API key protected endpoints
 - Printer registration (host/device/access-code)
 - Batch printer import from JSON
 - Config-file printer loading on startup
@@ -49,7 +48,7 @@ cargo run
 Or set env vars inline:
 
 ```powershell
-$env:API_KEY = "mysecret"; $env:MEDIAMTX_RTSP_PUBLISH = "rtsp://127.0.0.1:8554"; cargo run
+$env:MEDIAMTX_RTSP_PUBLISH = "rtsp://127.0.0.1:8554"; cargo run
 ```
 
 ### Windows (Command Prompt)
@@ -59,7 +58,6 @@ cd rust-api
 copy .env.example .env
 rem Edit .env, then set each variable:
 set API_BIND=0.0.0.0:8080
-set API_KEY=mysecret
 set FFMPEG_BIN=ffmpeg
 set MEDIAMTX_RTSP_PUBLISH=rtsp://127.0.0.1:8554
 set WEBRTC_URL_TEMPLATE=http://127.0.0.1:8889/{id}/
@@ -108,27 +106,25 @@ cargo run --bin bambu -- delete my-printer
 cargo run --bin bambu -- init
 ```
 
-The CLI reads `BAMBU_API_URL` and `BAMBU_API_KEY` from environment, or use `--url` and `--key` flags.
+The CLI reads `BAMBU_API_URL` from environment, or use `--url` flag.
 
 **Windows examples:**
 
 ```powershell
-# PowerShell — set env vars
+# PowerShell — set env var
 $env:BAMBU_API_URL = "http://127.0.0.1:8080"
-$env:BAMBU_API_KEY = "mysecret"
 cargo run --bin bambu -- list
 ```
 
 ```cmd
-REM Command Prompt — set env vars
+REM Command Prompt — set env var
 set BAMBU_API_URL=http://127.0.0.1:8080
-set BAMBU_API_KEY=mysecret
 cargo run --bin bambu -- list
 ```
 
 ```powershell
-# Or use flags (works on all platforms)
-cargo run --bin bambu -- --url http://127.0.0.1:8080 --key mysecret list
+# Or use flag (works on all platforms)
+cargo run --bin bambu -- --url http://127.0.0.1:8080 list
 ```
 
 ## Printers Config File
@@ -180,7 +176,6 @@ Generate a template with: `cargo run --bin bambu -- init`
 
 ### Health
 
-**Linux / macOS:**
 ```bash
 curl http://127.0.0.1:8080/health
 ```
@@ -192,10 +187,8 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 
 ### Upsert printer
 
-**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers \
-  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "id":"printer-1",
@@ -208,7 +201,6 @@ curl -X POST http://127.0.0.1:8080/v1/printers \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
 $body = @{
     id = "printer-1"
     host = "10.0.0.10"
@@ -218,113 +210,93 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers `
-  -Method Post -Headers $headers -ContentType "application/json" -Body $body
+  -Method Post -ContentType "application/json" -Body $body
 ```
 
 ### List printers
 
-**Linux / macOS:**
 ```bash
-curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers
+curl http://127.0.0.1:8080/v1/printers
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers
 ```
 
 ### Get printer details
 
-**Linux / macOS:**
 ```bash
-curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/printer-1
+curl http://127.0.0.1:8080/v1/printers/printer-1
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1
 ```
 
 ### Start stream
 
-**Linux / macOS:**
 ```bash
-curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/start \
-  -H "Authorization: Bearer $API_KEY"
+curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/start
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/start `
-  -Method Post -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/start -Method Post
 ```
 
 ### Stop stream
 
-**Linux / macOS:**
 ```bash
-curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/stop \
-  -H "Authorization: Bearer $API_KEY"
+curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/stop
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/stop `
-  -Method Post -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/stop -Method Post
 ```
 
 ### Get stream URL
 
-**Linux / macOS:**
 ```bash
-curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/printer-1/stream/url
+curl http://127.0.0.1:8080/v1/printers/printer-1/stream/url
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/url -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/url
 ```
 
 ### Delete printer
 
-**Linux / macOS:**
 ```bash
-curl -X DELETE http://127.0.0.1:8080/v1/printers/printer-1 \
-  -H "Authorization: Bearer $API_KEY"
+curl -X DELETE http://127.0.0.1:8080/v1/printers/printer-1
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
-Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 `
-  -Method Delete -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Method Delete
 ```
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| POST | `/v1/printers` | Yes | Upsert (create/update) printer |
-| POST | `/v1/printers/batch` | Yes | Batch upsert multiple printers |
-| GET | `/v1/printers` | Yes | List all printers |
-| GET | `/v1/printers/{id}` | Yes | Get printer details |
-| DELETE | `/v1/printers/{id}` | Yes | Delete printer (stops stream if running) |
-| POST | `/v1/printers/{id}/stream/start` | Yes | Start FFmpeg stream |
-| POST | `/v1/printers/{id}/stream/stop` | Yes | Stop FFmpeg stream |
-| GET | `/v1/printers/{id}/stream/url` | Yes | Get WebRTC stream URL |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| POST | `/v1/printers` | Upsert (create/update) printer |
+| POST | `/v1/printers/batch` | Batch upsert multiple printers |
+| GET | `/v1/printers` | List all printers |
+| GET | `/v1/printers/{id}` | Get printer details |
+| DELETE | `/v1/printers/{id}` | Delete printer (stops stream if running) |
+| POST | `/v1/printers/{id}/stream/start` | Start FFmpeg stream |
+| POST | `/v1/printers/{id}/stream/stop` | Stop FFmpeg stream |
+| GET | `/v1/printers/{id}/stream/url` | Get WebRTC stream URL |
 
 ### Batch Upsert
 
-**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers/batch \
-  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "printers": [
@@ -336,7 +308,6 @@ curl -X POST http://127.0.0.1:8080/v1/printers/batch \
 
 **Windows (PowerShell):**
 ```powershell
-$headers = @{ Authorization = "Bearer $($env:API_KEY)" }
 $body = @{
     printers = @(
         @{ id = "p1"; host = "10.0.0.1"; device_id = "DEV001"; access_code = "11111111" },
@@ -345,7 +316,7 @@ $body = @{
 } | ConvertTo-Json -Depth 3
 
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/batch `
-  -Method Post -Headers $headers -ContentType "application/json" -Body $body
+  -Method Post -ContentType "application/json" -Body $body
 ```
 
 Response:
@@ -375,7 +346,6 @@ bash test-api.sh
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_BIND` | `0.0.0.0:8080` | Bind address for the HTTP server |
-| `API_KEY` | `change-me` | Bearer token for authenticated endpoints |
 | `FFMPEG_BIN` | `ffmpeg` | Path to ffmpeg binary (Windows: use full path e.g. `C:\tools\ffmpeg\bin\ffmpeg.exe`) |
 | `MEDIAMTX_RTSP_PUBLISH` | `rtsp://127.0.0.1:8554` | MediaMTX RTSP publish base URL |
 | `WEBRTC_URL_TEMPLATE` | `http://127.0.0.1:8889/{id}/` | WebRTC URL template (`{id}` = printer ID) |
@@ -384,10 +354,9 @@ bash test-api.sh
 
 ## Windows Notes
 
-- **`curl` is an alias**: PowerShell's `curl` is an alias for `Invoke-WebRequest`, not the real curl. Use `Invoke-RestMethod` (as shown in the API examples above) or install real curl via `winget install curl.curl`
 - **FFmpeg**: Download from [ffmpeg.org](https://ffmpeg.org/download.html), extract, and either add to `PATH` or set `FFMPEG_BIN` to the full executable path (e.g. `C:\tools\ffmpeg\bin\ffmpeg.exe`)
 - **MediaMTX**: Download the Windows binary from [github.com/bluenviron/mediamtx/releases](https://github.com/bluenviron/mediamtx/releases)
 - **Process management**: The API uses `taskkill /F /T /PID` on Windows to properly kill FFmpeg process trees (prevents orphaned processes)
 - **Graceful shutdown**: Ctrl+C works on all platforms; SIGTERM is only available on Unix
 - **Test script**: Use `test-api.ps1` (PowerShell) instead of `test-api.sh` (bash)
-- **JSON quoting**: In PowerShell, use `ConvertTo-Json` to build request bodies instead of raw JSON strings — it handles all escaping automatically
+- **PowerShell API calls**: Use `Invoke-RestMethod` as shown in the examples above — PowerShell's `curl` is an alias for `Invoke-WebRequest`, not the real curl

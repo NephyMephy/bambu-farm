@@ -25,10 +25,6 @@ struct Cli {
     #[arg(long, env = "BAMBU_API_URL", default_value = "http://127.0.0.1:8080")]
     url: String,
 
-    /// API key (Bearer token)
-    #[arg(long, env = "BAMBU_API_KEY", default_value = "change-me")]
-    key: String,
-
     /// Output as JSON (no pretty-printing)
     #[arg(long)]
     json: bool,
@@ -133,11 +129,10 @@ async fn main() {
     let cli = Cli::parse();
     let client = Client::new();
     let base = cli.url.trim_end_matches('/').to_string();
-    let auth_header = format!("Bearer {}", cli.key);
 
     let result = match cli.command {
-        Commands::Health => cmd_health(&client, &base, &auth_header, cli.json).await,
-        Commands::List => cmd_list(&client, &base, &auth_header, cli.json).await,
+        Commands::Health => cmd_health(&client, &base, cli.json).await,
+        Commands::List => cmd_list(&client, &base, cli.json).await,
         Commands::Add {
             id,
             host,
@@ -149,16 +144,16 @@ async fn main() {
             file,
         } => {
             cmd_add(
-                &client, &base, &auth_header, cli.json, id, host, device_id,
+                &client, &base, cli.json, id, host, device_id,
                 access_code, username, rtsp_port, rtsp_path, file,
             )
             .await
         }
-        Commands::Get { id } => cmd_get(&client, &base, &auth_header, cli.json, &id).await,
-        Commands::Delete { id } => cmd_delete(&client, &base, &auth_header, cli.json, &id).await,
-        Commands::Start { id } => cmd_start(&client, &base, &auth_header, cli.json, &id).await,
-        Commands::Stop { id } => cmd_stop(&client, &base, &auth_header, cli.json, &id).await,
-        Commands::Url { id } => cmd_url(&client, &base, &auth_header, cli.json, &id).await,
+        Commands::Get { id } => cmd_get(&client, &base, cli.json, &id).await,
+        Commands::Delete { id } => cmd_delete(&client, &base, cli.json, &id).await,
+        Commands::Start { id } => cmd_start(&client, &base, cli.json, &id).await,
+        Commands::Stop { id } => cmd_stop(&client, &base, cli.json, &id).await,
+        Commands::Url { id } => cmd_url(&client, &base, cli.json, &id).await,
         Commands::Init { output } => cmd_init(&output),
     };
 
@@ -168,11 +163,7 @@ async fn main() {
     }
 }
 
-fn auth_header_val(token: &str) -> String {
-    token.to_string()
-}
-
-async fn cmd_health(client: &Client, base: &str, _auth: &str, raw_json: bool) -> Result<(), String> {
+async fn cmd_health(client: &Client, base: &str, raw_json: bool) -> Result<(), String> {
     let resp = client
         .get(format!("{base}/health"))
         .send()
@@ -201,15 +192,12 @@ async fn cmd_health(client: &Client, base: &str, _auth: &str, raw_json: bool) ->
     Ok(())
 }
 
-async fn cmd_list(client: &Client, base: &str, auth: &str, raw_json: bool) -> Result<(), String> {
+async fn cmd_list(client: &Client, base: &str, raw_json: bool) -> Result<(), String> {
     let resp = client
         .get(format!("{base}/v1/printers"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     let printers: Vec<serde_json::Value> = resp.json().await.map_err(|e| format!("parse error: {e}"))?;
 
@@ -257,7 +245,6 @@ async fn cmd_list(client: &Client, base: &str, auth: &str, raw_json: bool) -> Re
 async fn cmd_add(
     client: &Client,
     base: &str,
-    auth: &str,
     raw_json: bool,
     id: Option<String>,
     host: Option<String>,
@@ -270,7 +257,7 @@ async fn cmd_add(
 ) -> Result<(), String> {
     // Batch from file
     if let Some(path) = file {
-        return cmd_add_file(client, base, auth, raw_json, &path).await;
+        return cmd_add_file(client, base, raw_json, &path).await;
     }
 
     // Single printer — require all positional args
@@ -291,14 +278,11 @@ async fn cmd_add(
 
     let resp = client
         .post(format!("{base}/v1/printers"))
-        .header("Authorization", auth_header_val(auth))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -319,7 +303,6 @@ async fn cmd_add(
 async fn cmd_add_file(
     client: &Client,
     base: &str,
-    auth: &str,
     raw_json: bool,
     path: &str,
 ) -> Result<(), String> {
@@ -338,14 +321,11 @@ async fn cmd_add_file(
 
     let resp = client
         .post(format!("{base}/v1/printers/batch"))
-        .header("Authorization", auth_header_val(auth))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     let result: serde_json::Value = resp.json().await.map_err(|e| format!("parse error: {e}"))?;
 
@@ -379,15 +359,12 @@ async fn cmd_add_file(
     Ok(())
 }
 
-async fn cmd_get(client: &Client, base: &str, auth: &str, raw_json: bool, id: &str) -> Result<(), String> {
+async fn cmd_get(client: &Client, base: &str, raw_json: bool, id: &str) -> Result<(), String> {
     let resp = client
         .get(format!("{base}/v1/printers/{id}"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if resp.status().as_u16() == 404 {
         return Err(format!("printer '{id}' not found"));
@@ -431,15 +408,12 @@ async fn cmd_get(client: &Client, base: &str, auth: &str, raw_json: bool, id: &s
     Ok(())
 }
 
-async fn cmd_delete(client: &Client, base: &str, auth: &str, raw_json: bool, id: &str) -> Result<(), String> {
+async fn cmd_delete(client: &Client, base: &str, raw_json: bool, id: &str) -> Result<(), String> {
     let resp = client
         .delete(format!("{base}/v1/printers/{id}"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if resp.status().as_u16() == 404 {
         return Err(format!("printer '{id}' not found"));
@@ -456,15 +430,12 @@ async fn cmd_delete(client: &Client, base: &str, auth: &str, raw_json: bool, id:
     Ok(())
 }
 
-async fn cmd_start(client: &Client, base: &str, auth: &str, raw_json: bool, id: &str) -> Result<(), String> {
+async fn cmd_start(client: &Client, base: &str, raw_json: bool, id: &str) -> Result<(), String> {
     let resp = client
         .post(format!("{base}/v1/printers/{id}/stream/start"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if resp.status().as_u16() == 404 {
         return Err(format!("printer '{id}' not found"));
@@ -489,15 +460,12 @@ async fn cmd_start(client: &Client, base: &str, auth: &str, raw_json: bool, id: 
     Ok(())
 }
 
-async fn cmd_stop(client: &Client, base: &str, auth: &str, raw_json: bool, id: &str) -> Result<(), String> {
+async fn cmd_stop(client: &Client, base: &str, raw_json: bool, id: &str) -> Result<(), String> {
     let resp = client
         .post(format!("{base}/v1/printers/{id}/stream/stop"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if resp.status().as_u16() == 404 {
         return Err(format!("printer '{id}' not found"));
@@ -517,15 +485,12 @@ async fn cmd_stop(client: &Client, base: &str, auth: &str, raw_json: bool, id: &
     Ok(())
 }
 
-async fn cmd_url(client: &Client, base: &str, auth: &str, raw_json: bool, id: &str) -> Result<(), String> {
+async fn cmd_url(client: &Client, base: &str, raw_json: bool, id: &str) -> Result<(), String> {
     let resp = client
         .get(format!("{base}/v1/printers/{id}/stream/url"))
-        .header("Authorization", auth_header_val(auth))
         .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
-
-    handle_auth(&resp)?;
 
     if resp.status().as_u16() == 404 {
         return Err(format!("printer '{id}' not found"));
@@ -582,12 +547,5 @@ fn cmd_init(output: &str) -> Result<(), String> {
 
     println!("{} template written to {}", "✓".green().bold(), output);
     println!("Edit the file, then run: bambu add -f {}", output);
-    Ok(())
-}
-
-fn handle_auth(resp: &reqwest::Response) -> Result<(), String> {
-    if resp.status().as_u16() == 401 {
-        return Err("unauthorized — check BAMBU_API_KEY or --key".to_string());
-    }
     Ok(())
 }
