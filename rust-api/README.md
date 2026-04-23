@@ -178,14 +178,21 @@ Generate a template with: `cargo run --bin bambu -- init`
 
 ## API
 
-Health:
+### Health
 
+**Linux / macOS:**
 ```bash
 curl http://127.0.0.1:8080/health
 ```
 
-Upsert printer:
+**Windows (PowerShell):**
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
 
+### Upsert printer
+
+**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers \
   -H "Authorization: Bearer $API_KEY" \
@@ -199,32 +206,103 @@ curl -X POST http://127.0.0.1:8080/v1/printers \
   }'
 ```
 
-Start stream:
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$body = @{
+    id = "printer-1"
+    host = "10.0.0.10"
+    device_id = "03W00X123456789"
+    username = "bblp"
+    access_code = "12345678"
+} | ConvertTo-Json
 
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers `
+  -Method Post -Headers $headers -ContentType "application/json" -Body $body
+```
+
+### List printers
+
+**Linux / macOS:**
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers
+```
+
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers -Headers $headers
+```
+
+### Get printer details
+
+**Linux / macOS:**
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/printer-1
+```
+
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Headers $headers
+```
+
+### Start stream
+
+**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/start \
   -H "Authorization: Bearer $API_KEY"
 ```
 
-Stop stream:
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/start `
+  -Method Post -Headers $headers
+```
 
+### Stop stream
+
+**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/stop \
   -H "Authorization: Bearer $API_KEY"
 ```
 
-Get stream URL:
-
-```bash
-curl http://127.0.0.1:8080/v1/printers/printer-1/stream/url \
-  -H "Authorization: Bearer $API_KEY"
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/stop `
+  -Method Post -Headers $headers
 ```
 
-Delete printer:
+### Get stream URL
 
+**Linux / macOS:**
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8080/v1/printers/printer-1/stream/url
+```
+
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/url -Headers $headers
+```
+
+### Delete printer
+
+**Linux / macOS:**
 ```bash
 curl -X DELETE http://127.0.0.1:8080/v1/printers/printer-1 \
   -H "Authorization: Bearer $API_KEY"
+```
+
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 `
+  -Method Delete -Headers $headers
 ```
 
 ## Endpoints
@@ -243,6 +321,7 @@ curl -X DELETE http://127.0.0.1:8080/v1/printers/printer-1 \
 
 ### Batch Upsert
 
+**Linux / macOS:**
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/printers/batch \
   -H "Authorization: Bearer $API_KEY" \
@@ -253,6 +332,20 @@ curl -X POST http://127.0.0.1:8080/v1/printers/batch \
       {"id":"p2","host":"10.0.0.2","device_id":"DEV002","access_code":"22222222"}
     ]
   }'
+```
+
+**Windows (PowerShell):**
+```powershell
+$headers = @{ "Authorization" = "Bearer $env:API_KEY" }
+$body = @{
+    printers = @(
+        @{ id = "p1"; host = "10.0.0.1"; device_id = "DEV001"; access_code = "11111111" },
+        @{ id = "p2"; host = "10.0.0.2"; device_id = "DEV002"; access_code = "22222222" }
+    )
+} | ConvertTo-Json -Depth 3
+
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/batch `
+  -Method Post -Headers $headers -ContentType "application/json" -Body $body
 ```
 
 Response:
@@ -291,8 +384,10 @@ bash test-api.sh
 
 ## Windows Notes
 
+- **`curl` is an alias**: PowerShell's `curl` is an alias for `Invoke-WebRequest`, not the real curl. Use `Invoke-RestMethod` (as shown in the API examples above) or install real curl via `winget install curl.curl`
 - **FFmpeg**: Download from [ffmpeg.org](https://ffmpeg.org/download.html), extract, and either add to `PATH` or set `FFMPEG_BIN` to the full executable path (e.g. `C:\tools\ffmpeg\bin\ffmpeg.exe`)
 - **MediaMTX**: Download the Windows binary from [github.com/bluenviron/mediamtx/releases](https://github.com/bluenviron/mediamtx/releases)
 - **Process management**: The API uses `taskkill /F /T /PID` on Windows to properly kill FFmpeg process trees (prevents orphaned processes)
 - **Graceful shutdown**: Ctrl+C works on all platforms; SIGTERM is only available on Unix
 - **Test script**: Use `test-api.ps1` (PowerShell) instead of `test-api.sh` (bash)
+- **JSON quoting**: In PowerShell, use `ConvertTo-Json` to build request bodies instead of raw JSON strings — it handles all escaping automatically
