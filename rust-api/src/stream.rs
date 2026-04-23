@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use crate::models::{PrinterRecord, StreamState};
+use crate::models::{PrinterRecord, StreamType, StreamState};
 use std::collections::HashMap;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -66,6 +66,18 @@ impl WorkerManager {
     ) -> Result<StreamState, String> {
         if self.state(&printer.id).await == StreamState::Running {
             return Ok(StreamState::Running);
+        }
+
+        // Proprietary streaming models (P1P, P1S, A1, A1 Mini) cannot be streamed
+        // directly via FFmpeg — they need a bridge like BambuP1Streamer + go2rtc.
+        if printer.stream.stream_type == StreamType::Proprietary {
+            return Err(format!(
+                "Printer model '{}' uses proprietary TCP streaming on port 6000 — \
+                 FFmpeg cannot connect directly. Use BambuP1Streamer (https://github.com/slynn1324/BambuP1Streamer) \
+                 + go2rtc as a bridge, or set stream_type to 'rtsp' with custom rtsp_port/rtsp_path \
+                 if you have a bridge running.",
+                printer.model.display_name()
+            ));
         }
 
         let permit = self

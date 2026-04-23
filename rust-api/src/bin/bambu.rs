@@ -57,11 +57,15 @@ enum Commands {
         /// Access code from Bambu Studio / printer label
         access_code: Option<String>,
 
+        /// Printer model: unknown, a1, a1mini, p1p, p1s, x1c, x1e
+        #[arg(long)]
+        model: Option<String>,
+
         /// Username (default: bblp)
         #[arg(long, default_value = "bblp")]
         username: String,
 
-        /// RTSP port (default: 322)
+        /// RTSP port (default: 322 for RTSPS models, 6000 for proprietary)
         #[arg(long)]
         rtsp_port: Option<u16>,
 
@@ -124,6 +128,8 @@ struct PrinterEntry {
     host: String,
     device_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<String>,
     access_code: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,6 +152,7 @@ async fn main() {
             host,
             device_id,
             access_code,
+            model,
             username,
             rtsp_port,
             rtsp_path,
@@ -153,7 +160,7 @@ async fn main() {
         } => {
             cmd_add(
                 &client, &base, cli.json, id, host, device_id,
-                access_code, username, rtsp_port, rtsp_path, file,
+                access_code, model, username, rtsp_port, rtsp_path, file,
             )
             .await
         }
@@ -222,20 +229,22 @@ async fn cmd_list(client: &Client, base: &str, raw_json: bool) -> Result<(), Str
     }
 
     println!(
-        "{:<20} {:<18} {:<20} {:<12} {}",
+        "{:<20} {:<18} {:<12} {:<10} {:<12} {}",
         "ID".bold(),
         "Host".bold(),
-        "Device ID".bold(),
+        "Model".bold(),
         "Stream".bold(),
+        "Type".bold(),
         "Updated".bold()
     );
-    println!("{}", "─".repeat(90));
+    println!("{}", "─".repeat(95));
 
     for p in &printers {
         let id = p["id"].as_str().unwrap_or("?");
         let host = p["host"].as_str().unwrap_or("?");
-        let device_id = p["device_id"].as_str().unwrap_or("?");
+        let model = p["model"].as_str().unwrap_or("unknown");
         let state = p["stream_state"].as_str().unwrap_or("?");
+        let stream_type = p["stream_type"].as_str().unwrap_or("?");
         let updated = p["updated_at"].as_str().unwrap_or("?");
 
         let state_colored = match state {
@@ -245,7 +254,13 @@ async fn cmd_list(client: &Client, base: &str, raw_json: bool) -> Result<(), Str
             _ => state.dimmed().to_string(),
         };
 
-        println!("{:<20} {:<18} {:<20} {:<12} {}", id, host, device_id, state_colored, updated);
+        let type_colored = match stream_type {
+            "rtsp" => stream_type.cyan().to_string(),
+            "proprietary" => stream_type.red().to_string(),
+            _ => stream_type.to_string(),
+        };
+
+        println!("{:<20} {:<18} {:<12} {:<10} {:<12} {}", id, host, model, state_colored, type_colored, updated);
     }
 
     println!("\n{} printer(s)", printers.len());
@@ -260,6 +275,7 @@ async fn cmd_add(
     host: Option<String>,
     device_id: Option<String>,
     access_code: Option<String>,
+    model: Option<String>,
     username: String,
     rtsp_port: Option<u16>,
     rtsp_path: Option<String>,
@@ -276,15 +292,23 @@ async fn cmd_add(
     let device_id = device_id.ok_or("missing <device_id> argument")?;
     let access_code = access_code.ok_or("missing <access_code> argument")?;
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "id": id,
         "host": host,
         "device_id": device_id,
         "username": username,
         "access_code": access_code,
-        "rtsp_port": rtsp_port,
-        "rtsp_path": rtsp_path,
     });
+
+    if let Some(ref m) = model {
+        body["model"] = serde_json::Value::String(m.to_lowercase());
+    }
+    if rtsp_port.is_some() {
+        body["rtsp_port"] = serde_json::json!(rtsp_port);
+    }
+    if rtsp_path.is_some() {
+        body["rtsp_path"] = serde_json::json!(rtsp_path);
+    }
 
     let resp = client
         .post(format!("{base}/v1/printers"))
@@ -392,13 +416,15 @@ async fn cmd_get(client: &Client, base: &str, raw_json: bool, id: &str) -> Resul
 
     let p = &printer["printer"];
     println!("{} {}", "Printer".bold(), p["id"].as_str().unwrap_or("?"));
-    println!("  Host:       {}", p["host"].as_str().unwrap_or("?"));
-    println!("  Device ID:  {}", p["device_id"].as_str().unwrap_or("?"));
-    println!("  Username:   {}", p["credentials"]["username"].as_str().unwrap_or("?"));
-    println!("  RTSP Port:  {}", p["stream"]["rtsp_port"].as_u64().unwrap_or(322));
-    println!("  RTSP Path:  {}", p["stream"]["rtsp_path"].as_str().unwrap_or("?"));
-    println!("  Created:    {}", p["created_at"].as_str().unwrap_or("?"));
-    println!("  Updated:    {}", p["updated_at"].as_str().unwrap_or("?"));
+    println!("  Host:        {}", p["host"].as_str().unwrap_or("?"));
+    println!("  Device ID:   {}", p["device_id"].as_str().unwrap_or("?"));
+    println!("  Model:       {}", p["model"].as_str().unwrap_or("unknown"));
+    println!("  Username:    {}", p["credentials"]["username"].as_str().unwrap_or("?"));
+    println!("  RTSP Port:   {}", p["stream"]["rtsp_port"].as_u64().unwrap_or(322));
+    println!("  RTSP Path:   {}", p["stream"]["rtsp_path"].as_str().unwrap_or("?"));
+    println!("  Stream Type: {}", p["stream"]["stream_type"].as_str().unwrap_or("?"));
+    println!("  Created:     {}", p["created_at"].as_str().unwrap_or("?"));
+    println!("  Updated:     {}", p["updated_at"].as_str().unwrap_or("?"));
 
     let state = printer["stream_state"].as_str().unwrap_or("?");
     let state_colored = match state {
@@ -610,22 +636,34 @@ async fn cmd_url(client: &Client, base: &str, raw_json: bool, id: &str) -> Resul
 fn cmd_init(output: &str) -> Result<(), String> {
     let template = vec![
         PrinterEntry {
-            id: "a1-mini-1".to_string(),
+            id: "x1c-1".to_string(),
             host: "192.168.1.100".to_string(),
             device_id: "03W00X123456789".to_string(),
+            model: Some("x1c".to_string()),
             username: Some("bblp".to_string()),
             access_code: "12345678".to_string(),
             rtsp_port: None,
             rtsp_path: None,
         },
         PrinterEntry {
-            id: "x1c-1".to_string(),
+            id: "p1s-1".to_string(),
             host: "192.168.1.101".to_string(),
             device_id: "03W00X987654321".to_string(),
+            model: Some("p1s".to_string()),
             username: None,
             access_code: "87654321".to_string(),
-            rtsp_port: Some(322),
-            rtsp_path: Some("/streaming/live/1".to_string()),
+            rtsp_port: None,
+            rtsp_path: None,
+        },
+        PrinterEntry {
+            id: "a1mini-1".to_string(),
+            host: "192.168.1.102".to_string(),
+            device_id: "03W00X111222333".to_string(),
+            model: Some("a1mini".to_string()),
+            username: None,
+            access_code: "11223344".to_string(),
+            rtsp_port: None,
+            rtsp_path: None,
         },
     ];
 

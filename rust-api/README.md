@@ -80,9 +80,12 @@ cargo run --bin bambu -- health
 # Add a single printer
 cargo run --bin bambu -- add my-printer 192.168.1.100 03W00X123456789 12345678
 
+# Add with model (recommended — auto-configures stream type)
+cargo run --bin bambu -- add my-x1c 192.168.1.100 03W00X123456789 12345678 --model x1c
+
 # Add with custom options
 cargo run --bin bambu -- add my-printer 192.168.1.100 03W00X123456789 12345678 \
-  --username bblp --rtsp-port 322
+  --model x1c --username bblp --rtsp-port 322
 
 # Batch add from JSON file
 cargo run --bin bambu -- add -f printers.json
@@ -158,24 +161,73 @@ Example `printers.json`:
 ```json
 [
   {
-    "id": "a1-mini-1",
+    "id": "x1c-1",
     "host": "192.168.1.100",
     "device_id": "03W00X123456789",
+    "model": "x1c",
     "access_code": "12345678"
   },
   {
-    "id": "x1c-1",
+    "id": "p1s-1",
     "host": "192.168.1.101",
     "device_id": "03W00X987654321",
-    "access_code": "87654321",
-    "username": "bblp",
-    "rtsp_port": 322,
-    "rtsp_path": "/streaming/live/1"
+    "model": "p1s",
+    "access_code": "87654321"
+  },
+  {
+    "id": "a1mini-1",
+    "host": "192.168.1.102",
+    "device_id": "03W00X111222333",
+    "model": "a1mini",
+    "access_code": "11223344"
   }
 ]
 ```
 
 Generate a template with: `cargo run --bin bambu -- init`
+
+## Printer Models
+
+The API supports different Bambu printer models with model-aware stream configuration. Set the `model` field when adding a printer to get the correct defaults automatically.
+
+| Model | Value | Stream Type | Port | FFmpeg Direct |
+|-------|-------|-------------|------|---------------|
+| X1 Carbon | `x1c` | RTSPS | 322 | ✅ Yes |
+| X1E | `x1e` | RTSPS | 322 | ✅ Yes |
+| P1P | `p1p` | Proprietary TCP | 6000 | ❌ No |
+| P1S | `p1s` | Proprietary TCP | 6000 | ❌ No |
+| A1 | `a1` | Proprietary TCP | 6000 | ❌ No |
+| A1 Mini | `a1mini` | Proprietary TCP | 6000 | ❌ No |
+| Unknown | `unknown` | RTSPS (assumed) | 322 | ✅ (if RTSPS-capable) |
+
+### RTSPS Models (X1C, X1E)
+
+These models have a native RTSPS server. FFmpeg connects directly:
+
+```
+rtsps://bblp:<access_code>@<host>:322/streaming/live/1
+```
+
+**Requirements:**
+- LAN Mode Liveview must be enabled on the printer
+- Only one RTSPS client can connect at a time (close Bambu Studio camera view first)
+
+### Proprietary Models (P1P, P1S, A1, A1 Mini)
+
+These models use a proprietary TCP JPEG streaming protocol on port 6000. **FFmpeg cannot connect directly.** To stream from these printers, you need a bridge:
+
+1. **[BambuP1Streamer](https://github.com/slynn1324/BambuP1Streamer)** — Converts the proprietary stream to MJPEG/RTSP
+2. **[go2rtc](https://github.com/AlexxIT/go2rtc)** — Can consume the BambuP1Streamer output and publish to MediaMTX
+
+Once you have a bridge running, you can override the stream settings:
+
+```bash
+# Example: P1S with go2rtc bridge on port 8554
+cargo run --bin bambu -- add my-p1s 192.168.1.101 03W00X987654321 87654321 \
+  --model p1s --rtsp-port 8554 --rtsp-path /my-p1s
+```
+
+Or via the API, set `stream_type` to `"rtsp"` with custom `rtsp_port`/`rtsp_path` pointing to your bridge.
 
 ## Dashboard
 
@@ -189,6 +241,75 @@ Open `http://127.0.0.1:8080/` in your browser to see the live dashboard. It show
 - Auto-refreshes every 10 seconds
 
 The dashboard is a single HTML page served by the API — no additional build step or frontend server needed.
+
+## Printer Models
+
+Different Bambu printer models use different streaming protocols. The API uses the `model` field to automatically configure the correct stream type:
+
+| Model | Value | Stream Type | Port | FFmpeg Direct? |
+|-------|-------|-------------|------|----------------|
+| X1 Carbon | `x1c` | RTSPS | 322 | ✅ Yes |
+| X1E | `x1e` | RTSPS | 322 | ✅ Yes |
+| P1P | `p1p` | Proprietary TCP | 6000 | ❌ No — needs bridge |
+| P1S | `p1s` | Proprietary TCP | 6000 | ❌ No — needs bridge |
+| A1 | `a1` | Proprietary TCP | 6000 | ❌ No — needs bridge |
+| A1 Mini | `a1mini` | Proprietary TCP | 6000 | ❌ No — needs bridge |
+| Unknown | `unknown` | RTSPS (assumed) | 322 | ✅ (assumed) |
+
+### RTSPS Models (X1C, X1E)
+
+These models have a built-in RTSP server. FFmpeg connects directly:
+
+```
+rtsps://bblp:<access_code>@<host>:322/streaming/live/1
+```
+
+**Requirements:**
+- LAN Mode Liveview must be enabled on the printer
+- Only one RTSP client at a time (Bambu Studio and this API cannot view simultaneously)
+
+### Proprietary Models (P1P, P1S, A1, A1 Mini)
+
+These models use a proprietary TCP JPEG streaming protocol on port 6000. **FFmpeg cannot connect directly.** You need a bridge:
+
+1. **[BambuP1Streamer](https://github.com/slynn1324/BambuP1Streamer)** — Converts the proprietary stream to MJPEG/RTSP
+2. **[go2rtc](https://github.com/AlexxIT/go2rtc)** — Can consume BambuP1Streamer output and republish as WebRTC
+
+Once you have a bridge running, configure the printer with custom `rtsp_port` and `rtsp_path` pointing to the bridge:
+
+```bash
+# Example: bridge running on same host at rtsp://127.0.0.1:8554/p1s-1
+cargo run --bin bambu -- add p1s-1 192.168.1.101 03W00X987654321 87654321 \
+  --model p1s --rtsp-port 8554 --rtsp-path /p1s-1
+```
+
+Or in `printers.json`:
+```json
+{
+  "id": "p1s-1",
+  "host": "192.168.1.101",
+  "device_id": "03W00X987654321",
+  "model": "p1s",
+  "access_code": "87654321",
+  "rtsp_port": 8554,
+  "rtsp_path": "/p1s-1"
+}
+```
+
+### Adding Printers with Model
+
+```bash
+# X1 Carbon — works out of the box
+cargo run --bin bambu -- add my-x1c 192.168.1.100 03W00X123456789 12345678 --model x1c
+
+# P1S — will show warning, needs bridge for streaming
+cargo run --bin bambu -- add my-p1s 192.168.1.101 03W00X987654321 87654321 --model p1s
+
+# A1 Mini — same as P1S, needs bridge
+cargo run --bin bambu -- add my-a1mini 192.168.1.102 03W00X111222333 11223344 --model a1mini
+```
+
+When you try to start a stream on a proprietary model without a bridge, the API returns a clear error explaining the requirement.
 
 ## API
 
@@ -212,6 +333,7 @@ curl -X POST http://127.0.0.1:8080/v1/printers \
     "id":"printer-1",
     "host":"10.0.0.10",
     "device_id":"03W00X123456789",
+    "model":"x1c",
     "username":"bblp",
     "access_code":"12345678"
   }'
@@ -223,6 +345,7 @@ $body = @{
     id = "printer-1"
     host = "10.0.0.10"
     device_id = "03W00X123456789"
+    model = "x1c"
     username = "bblp"
     access_code = "12345678"
 } | ConvertTo-Json

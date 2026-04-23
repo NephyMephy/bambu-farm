@@ -1,24 +1,139 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Bambu printer model — determines streaming capabilities.
+///
+/// - **X1C / X1E**: RTSPS on port 322, path `/streaming/live/1` — FFmpeg works directly.
+/// - **P1P / P1S / A1 / A1Mini**: Proprietary TCP JPEG streaming on port 6000 —
+///   FFmpeg **cannot** connect directly; requires a bridge like `BambuP1Streamer` + `go2rtc`.
+/// - **Unknown**: Falls back to user-provided RTSP settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PrinterModel {
+    Unknown,
+    A1,
+    A1Mini,
+    P1P,
+    P1S,
+    X1C,
+    X1E,
+}
+
+impl PrinterModel {
+    /// Whether this model supports native RTSPS streaming (FFmpeg can connect directly).
+    pub fn supports_rtsp(&self) -> bool {
+        matches!(self, Self::X1C | Self::X1E)
+    }
+
+    /// Whether this model uses the proprietary TCP JPEG protocol on port 6000.
+    pub fn uses_proprietary_stream(&self) -> bool {
+        matches!(self, Self::A1 | Self::A1Mini | Self::P1P | Self::P1S)
+    }
+
+    /// Human-readable model name.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Unknown => "Unknown",
+            Self::A1 => "A1",
+            Self::A1Mini => "A1 Mini",
+            Self::P1P => "P1P",
+            Self::P1S => "P1S",
+            Self::X1C => "X1 Carbon",
+            Self::X1E => "X1E",
+        }
+    }
+
+    /// Default RTSP port for this model (322 for RTSPS models, 6000 for proprietary).
+    pub fn default_rtsp_port(&self) -> u16 {
+        if self.supports_rtsp() {
+            322
+        } else if self.uses_proprietary_stream() {
+            6000
+        } else {
+            322
+        }
+    }
+
+    /// Default RTSP path for this model.
+    pub fn default_rtsp_path(&self) -> &'static str {
+        if self.supports_rtsp() {
+            "/streaming/live/1"
+        } else if self.uses_proprietary_stream() {
+            // Proprietary protocol — no RTSP path, but we store a placeholder
+            "/streaming/live/1"
+        } else {
+            "/streaming/live/1"
+        }
+    }
+}
+
+impl Default for PrinterModel {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+impl std::fmt::Display for PrinterModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Unknown => "unknown",
+            Self::A1 => "a1",
+            Self::A1Mini => "a1mini",
+            Self::P1P => "p1p",
+            Self::P1S => "p1s",
+            Self::X1C => "x1c",
+            Self::X1E => "x1e",
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterCredentials {
     pub username: String,
     pub access_code: String,
 }
 
+/// Stream type — distinguishes RTSPS (direct FFmpeg) from proprietary (needs bridge).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamType {
+    /// RTSPS — FFmpeg can connect directly (X1C, X1E).
+    Rtsp,
+    /// Proprietary TCP JPEG — needs BambuP1Streamer/go2rtc bridge (P1P, P1S, A1, A1 Mini).
+    Proprietary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterStreamConfig {
     pub rtsp_port: u16,
     pub rtsp_path: String,
+    /// Stream type derived from the printer model.
+    pub stream_type: StreamType,
+}
+
+impl PrinterStreamConfig {
+    /// Create config appropriate for the given model.
+    pub fn for_model(model: PrinterModel) -> Self {
+        let stream_type = if model.supports_rtsp() {
+            StreamType::Rtsp
+        } else if model.uses_proprietary_stream() {
+            StreamType::Proprietary
+        } else {
+            // Unknown model — assume RTSPS (user can override)
+            StreamType::Rtsp
+        };
+
+        Self {
+            rtsp_port: model.default_rtsp_port(),
+            rtsp_path: model.default_rtsp_path().to_string(),
+            stream_type,
+        }
+    }
 }
 
 impl Default for PrinterStreamConfig {
     fn default() -> Self {
-        Self {
-            rtsp_port: 322,
-            rtsp_path: "/streaming/live/1".to_string(),
-        }
+        Self::for_model(PrinterModel::Unknown)
     }
 }
 
@@ -27,6 +142,7 @@ pub struct PrinterRecord {
     pub id: String,
     pub host: String,
     pub device_id: String,
+    pub model: PrinterModel,
     pub credentials: PrinterCredentials,
     pub stream: PrinterStreamConfig,
     pub created_at: DateTime<Utc>,
@@ -38,6 +154,8 @@ pub struct UpsertPrinterRequest {
     pub id: String,
     pub host: String,
     pub device_id: String,
+    /// Printer model (e.g. "x1c", "p1s", "a1mini"). Determines stream type and defaults.
+    pub model: Option<PrinterModel>,
     pub username: Option<String>,
     pub access_code: String,
     pub rtsp_port: Option<u16>,
@@ -67,6 +185,8 @@ pub struct PrinterSummaryResponse {
     pub id: String,
     pub host: String,
     pub device_id: String,
+    pub model: PrinterModel,
+    pub stream_type: StreamType,
     pub updated_at: DateTime<Utc>,
     pub stream_state: StreamState,
 }

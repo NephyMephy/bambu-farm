@@ -1,6 +1,6 @@
 use crate::models::{
     BatchStreamError, BatchStreamResponse, BatchUpsertError, BatchUpsertRequest,
-    BatchUpsertResponse, HealthResponse, PrinterDetailResponse, PrinterRecord,
+    BatchUpsertResponse, HealthResponse, PrinterDetailResponse, PrinterModel, PrinterRecord,
     PrinterSummaryResponse, StreamActionResponse, StreamState, UpsertPrinterRequest,
 };
 use crate::state::AppState;
@@ -24,6 +24,18 @@ fn normalize_rtsp_path(path: Option<String>) -> String {
         p
     } else {
         format!("/{p}")
+    }
+}
+
+/// Build a `PrinterStreamConfig` from the request, using the model to set defaults.
+fn build_stream_config(req: &UpsertPrinterRequest) -> crate::models::PrinterStreamConfig {
+    let model = req.model.unwrap_or(PrinterModel::Unknown);
+    let defaults = crate::models::PrinterStreamConfig::for_model(model);
+
+    crate::models::PrinterStreamConfig {
+        rtsp_port: req.rtsp_port.unwrap_or(defaults.rtsp_port),
+        rtsp_path: normalize_rtsp_path(req.rtsp_path.clone().or_else(|| Some(defaults.rtsp_path))),
+        stream_type: defaults.stream_type,
     }
 }
 
@@ -64,18 +76,19 @@ pub async fn upsert_printer(
         .map(|p| p.created_at)
         .unwrap_or(now);
 
+    let model = req.model.unwrap_or(PrinterModel::Unknown);
+    let stream = build_stream_config(&req);
+
     let record = PrinterRecord {
         id: req.id.clone(),
         host: req.host,
         device_id: req.device_id,
+        model,
         credentials: crate::models::PrinterCredentials {
             username: req.username.unwrap_or_else(|| "bblp".to_string()),
             access_code: req.access_code,
         },
-        stream: crate::models::PrinterStreamConfig {
-            rtsp_port: req.rtsp_port.unwrap_or(322),
-            rtsp_path: normalize_rtsp_path(req.rtsp_path),
-        },
+        stream,
         created_at,
         updated_at: now,
     };
@@ -121,18 +134,19 @@ pub async fn batch_upsert_printers(
             .map(|p| p.created_at)
             .unwrap_or(now);
 
+        let model = printer_req.model.unwrap_or(PrinterModel::Unknown);
+        let stream = build_stream_config(&printer_req);
+
         let record = PrinterRecord {
             id: printer_req.id.clone(),
             host: printer_req.host,
             device_id: printer_req.device_id,
+            model,
             credentials: crate::models::PrinterCredentials {
                 username: printer_req.username.unwrap_or_else(|| "bblp".to_string()),
                 access_code: printer_req.access_code,
             },
-            stream: crate::models::PrinterStreamConfig {
-                rtsp_port: printer_req.rtsp_port.unwrap_or(322),
-                rtsp_path: normalize_rtsp_path(printer_req.rtsp_path),
-            },
+            stream,
             created_at,
             updated_at: now,
         };
@@ -158,6 +172,8 @@ pub async fn list_printers(State(state): State<AppState>) -> impl IntoResponse {
             id: p.id.clone(),
             host: p.host,
             device_id: p.device_id,
+            model: p.model,
+            stream_type: p.stream.stream_type,
             updated_at: p.updated_at,
             stream_state: state.workers.state(&p.id).await,
         });

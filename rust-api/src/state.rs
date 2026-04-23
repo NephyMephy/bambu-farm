@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use crate::models::PrinterRecord;
+use crate::models::{PrinterModel, PrinterRecord, PrinterStreamConfig};
 use crate::stream::WorkerManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -52,17 +52,22 @@ impl AppState {
         let now = chrono::Utc::now();
         let mut map = HashMap::new();
         for def in defs {
+            let model = def.model.unwrap_or(PrinterModel::Unknown);
+            let defaults = PrinterStreamConfig::for_model(model);
+
             let record = PrinterRecord {
                 id: def.id.clone(),
                 host: def.host,
                 device_id: def.device_id,
+                model,
                 credentials: crate::models::PrinterCredentials {
                     username: def.username.unwrap_or_else(|| "bblp".to_string()),
                     access_code: def.access_code,
                 },
-                stream: crate::models::PrinterStreamConfig {
-                    rtsp_port: def.rtsp_port.unwrap_or(322),
-                    rtsp_path: def.rtsp_path.unwrap_or_else(|| "/streaming/live/1".to_string()),
+                stream: PrinterStreamConfig {
+                    rtsp_port: def.rtsp_port.unwrap_or(defaults.rtsp_port),
+                    rtsp_path: def.rtsp_path.unwrap_or(defaults.rtsp_path),
+                    stream_type: defaults.stream_type,
                 },
                 created_at: now,
                 updated_at: now,
@@ -79,6 +84,7 @@ struct PrinterFileEntry {
     pub id: String,
     pub host: String,
     pub device_id: String,
+    pub model: Option<PrinterModel>,
     pub username: Option<String>,
     pub access_code: String,
     pub rtsp_port: Option<u16>,

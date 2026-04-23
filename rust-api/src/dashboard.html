@@ -94,6 +94,8 @@
   .badge-starting { background: #ca8a0433; color: #facc15; }
   .badge-stopped { background: #6b728033; color: #9ca3af; }
   .badge-error { background: #dc262633; color: #f87171; }
+  .badge-model { background: #3b82f633; color: #93c5fd; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .badge-proprietary { background: #f9731633; color: #fb923c; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
   .card-body {
     position: relative;
     width: 100%;
@@ -193,27 +195,50 @@ function render() {
     const state = p.stream_state || 'stopped';
     const isLive = state === 'running' || state === 'starting';
     const webrtcUrl = isLive && p.stream_url ? p.stream_url : '';
+    const model = p.model || 'unknown';
+    const streamType = p.stream_type || 'rtsp';
+    const isProprietary = streamType === 'proprietary';
+    const modelLabel = modelLabelFor(model);
     return `
       <div class="card" id="card-${p.id}">
         <div class="card-header">
           <div>
             <span class="label">${esc(p.id)}</span>
             <span class="host">${esc(p.host)}</span>
+            <span class="badge badge-model">${modelLabel}</span>
+            ${isProprietary ? '<span class="badge badge-proprietary">⚠ Proprietary</span>' : ''}
           </div>
           <span class="badge ${badgeClass(state)}">${state}</span>
         </div>
         <div class="card-body">
-          ${webrtcUrl
-            ? `<iframe src="${esc(webrtcUrl)}" allow="autoplay" loading="lazy"></iframe>`
-            : `<div class="placeholder">Stream offline</div>`}
+          ${isProprietary && !isLive
+            ? `<div class="placeholder" style="flex-direction:column;gap:6px;">
+                 <span>⚠ Proprietary stream</span>
+                 <span style="font-size:11px;color:#777;">Needs BambuP1Streamer + go2rtc bridge</span>
+               </div>`
+            : webrtcUrl
+              ? `<iframe src="${esc(webrtcUrl)}" allow="autoplay" loading="lazy"></iframe>`
+              : `<div class="placeholder">Stream offline</div>`}
         </div>
         <div class="card-actions">
-          <button class="btn btn-start" onclick="startOne('${esc(p.id)}')">▶ Start</button>
+          <button class="btn btn-start" onclick="startOne('${esc(p.id)}')" ${isProprietary ? 'title="This model uses proprietary streaming — requires BambuP1Streamer bridge"' : ''}>▶ Start</button>
           <button class="btn btn-stop" onclick="stopOne('${esc(p.id)}')">■ Stop</button>
         </div>
       </div>`;
   }).join('');
 }
+
+function modelLabelFor(model) {
+  const labels = {
+    'x1c': 'X1 Carbon',
+    'x1e': 'X1E',
+    'p1p': 'P1P',
+    'p1s': 'P1S',
+    'a1': 'A1',
+    'a1mini': 'A1 Mini',
+    'unknown': 'Unknown',
+  };
+  return labels[model] || model;
 
 function esc(s) {
   const d = document.createElement('div');
