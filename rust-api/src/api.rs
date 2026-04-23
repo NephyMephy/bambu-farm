@@ -1,10 +1,11 @@
 use crate::models::{
     BatchStreamError, BatchStreamResponse, BatchUpsertError, BatchUpsertRequest,
     BatchUpsertResponse, HealthResponse, PrinterDetailResponse, PrinterModel, PrinterRecord,
-    PrinterSummaryResponse, StreamActionResponse, StreamState, UpsertPrinterRequest,
+    PrinterSummaryResponse, StreamActionResponse, StreamState, StreamType, UpsertPrinterRequest,
 };
 use crate::state::AppState;
 use crate::stream::WorkerManager;
+use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
@@ -36,6 +37,16 @@ fn build_stream_config(req: &UpsertPrinterRequest) -> crate::models::PrinterStre
         rtsp_port: req.rtsp_port.unwrap_or(defaults.rtsp_port),
         rtsp_path: normalize_rtsp_path(req.rtsp_path.clone().or_else(|| Some(defaults.rtsp_path))),
         stream_type: defaults.stream_type,
+    }
+}
+
+/// Get the appropriate stream URL for a printer based on its stream type.
+/// - RTSPS models: WebRTC URL (MediaMTX)
+/// - Proprietary models: MJPEG stream URL (served by this API)
+fn stream_url_for(printer: &PrinterRecord, settings: &crate::config::Settings) -> String {
+    match printer.stream.stream_type {
+        StreamType::Rtsp => settings.webrtc_url_for(&printer.id),
+        StreamType::Proprietary => format!("/v1/printers/{}/stream/mjpeg", printer.id),
     }
 }
 
@@ -196,7 +207,7 @@ pub async fn get_printer(
 
     let stream_state = state.workers.state(&printer_id).await;
     let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
-        Some(state.settings.webrtc_url_for(&printer_id))
+        Some(stream_url_for(&printer, &state.settings))
     } else {
         None
     };
@@ -231,7 +242,7 @@ pub async fn start_stream(
     Ok(Json(StreamActionResponse {
         printer_id,
         state: stream_state,
-        url: Some(state.settings.webrtc_url_for(&printer.id)),
+        url: Some(stream_url_for(&printer, &state.settings)),
         rtsp_source_url: Some(WorkerManager::rtsp_source_url(&printer)),
         rtsp_publish_url: Some(WorkerManager::rtsp_publish_url(&printer, &state.settings)),
         message: "stream start requested".to_string(),
@@ -286,16 +297,17 @@ pub async fn stream_url(
     Path(printer_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    state
+    let printer = state
         .printers
         .read()
         .await
         .get(&printer_id)
+        .cloned()
         .ok_or((StatusCode::NOT_FOUND, "printer not found".to_string()))?;
 
     let stream_state = state.workers.state(&printer_id).await;
     let url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
-        Some(state.settings.webrtc_url_for(&printer_id))
+        Some(stream_url_for(&printer, &state.settings))
     } else {
         None
     };
@@ -375,4 +387,90 @@ pub async fn dashboard() -> impl IntoResponse {
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html,
     )
+}
+
+/// Get the latest JPEG snapshot for a proprietary stream printer.
+/// Returns a single JPEG image — useful for dashboard thumbnails.
+pub async fn stream_snapshot(
+    Path(printer_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let printer = state
+        .printers
+        .read()
+        .await
+        .get(&printer_id)
+        .cloned()
+        .ok_or((StatusCode::NOT_FOUND, "printer not found".to_string()))?;
+
+    if printer.stream.stream_type != StreamType::Proprietary {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "snapshot only available for proprietary stream models (P1P, P1S, A1, A1 Mini)".to_string(),
+        ));
+    }
+
+    let frame = state.workers.latest_frame(&printer_id).await
+        .ok_or((StatusCode::NOT_FOUND, "no frame available — stream may not be running".to_string()))?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "image/jpeg")],
+        (*frame).clone(),
+    ))
+}
+
+/// MJPEG stream endpoint for proprietary stream printers.
+/// Serves a continuous multipart JPEG stream that browsers can display in <img> tags.
+pub async fn stream_mjpeg(
+    Path(printer_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let printer = state
+        .printers
+        .read()
+        .await
+        .get(&printer_id)
+        .cloned()
+        .ok_or((StatusCode::NOT_FOUND, "printer not found".to_string()))?;
+
+    if printer.stream.stream_type != StreamType::Proprietary {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "MJPEG stream only available for proprietary stream models (P1P, P1S, A1, A1 Mini)".to_string(),
+        ));
+    }
+
+    let stream_state = state.workers.state(&printer_id).await;
+    if !matches!(stream_state, StreamState::Running | StreamState::Starting) {
+        return Err((StatusCode::NOT_FOUND, "stream is not running".to_string()));
+    }
+
+    let workers = state.workers.clone();
+    let pid = printer_id.clone();
+
+    let body = Body::from_stream(async_stream::stream! {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+        loop {
+            interval.tick().await;
+            if let Some(frame) = workers.latest_frame(&pid).await {
+                let header = format!(
+                    "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+                    frame.len()
+                );
+                yield Ok::<_, std::convert::Infallible>(bytes::Bytes::from(header));
+                yield Ok::<_, std::convert::Infallible>(bytes::Bytes::from((*frame).clone()));
+                yield Ok::<_, std::convert::Infallible>(bytes::Bytes::from("\r\n"));
+            }
+        }
+    });
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "multipart/x-mixed-replace; boundary=frame"),
+            (header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+        ],
+        body,
+    ))
 }

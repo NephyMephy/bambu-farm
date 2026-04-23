@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 
 /// Bambu printer model — determines streaming capabilities.
 ///
-/// - **X1C / X1E**: RTSPS on port 322, path `/streaming/live/1` — FFmpeg works directly.
+/// - **X1C / X1E**: RTSPS on port 322, path `/streaming/live/1` — FFmpeg → MediaMTX → WebRTC.
 /// - **P1P / P1S / A1 / A1Mini**: Proprietary TCP JPEG streaming on port 6000 —
-///   FFmpeg **cannot** connect directly; requires a bridge like `BambuP1Streamer` + `go2rtc`.
+///   native MJPEG stream served directly by the API (no external bridge needed).
 /// - **Unknown**: Falls back to user-provided RTSP settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -31,6 +31,7 @@ impl PrinterModel {
     }
 
     /// Human-readable model name.
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Unknown => "Unknown",
@@ -93,13 +94,13 @@ pub struct PrinterCredentials {
     pub access_code: String,
 }
 
-/// Stream type — distinguishes RTSPS (direct FFmpeg) from proprietary (needs bridge).
+/// Stream type — distinguishes RTSPS (FFmpeg → MediaMTX) from proprietary (native MJPEG).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StreamType {
-    /// RTSPS — FFmpeg can connect directly (X1C, X1E).
+    /// RTSPS — FFmpeg relays to MediaMTX for WebRTC (X1C, X1E).
     Rtsp,
-    /// Proprietary TCP JPEG — needs BambuP1Streamer/go2rtc bridge (P1P, P1S, A1, A1 Mini).
+    /// Proprietary TCP JPEG — native MJPEG stream served by the API (P1P, P1S, A1, A1 Mini).
     Proprietary,
 }
 

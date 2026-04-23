@@ -11,6 +11,11 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
+    // Install the rustls crypto provider (needed for proprietary TLS streaming)
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -31,6 +36,8 @@ async fn main() {
         .route("/v1/printers/{id}/stream/start", post(api::start_stream))
         .route("/v1/printers/{id}/stream/stop", post(api::stop_stream))
         .route("/v1/printers/{id}/stream/url", get(api::stream_url))
+        .route("/v1/printers/{id}/stream/snapshot", get(api::stream_snapshot))
+        .route("/v1/printers/{id}/stream/mjpeg", get(api::stream_mjpeg))
         .route("/v1/streams/start", post(api::start_all_streams))
         .route("/v1/streams/stop", post(api::stop_all_streams))
         .with_state(state);

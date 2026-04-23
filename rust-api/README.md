@@ -190,14 +190,14 @@ Generate a template with: `cargo run --bin bambu -- init`
 
 The API supports different Bambu printer models with model-aware stream configuration. Set the `model` field when adding a printer to get the correct defaults automatically.
 
-| Model | Value | Stream Type | Port | FFmpeg Direct |
+| Model | Value | Stream Type | Port | Direct Support |
 |-------|-------|-------------|------|---------------|
-| X1 Carbon | `x1c` | RTSPS | 322 | ✅ Yes |
-| X1E | `x1e` | RTSPS | 322 | ✅ Yes |
-| P1P | `p1p` | Proprietary TCP | 6000 | ❌ No |
-| P1S | `p1s` | Proprietary TCP | 6000 | ❌ No |
-| A1 | `a1` | Proprietary TCP | 6000 | ❌ No |
-| A1 Mini | `a1mini` | Proprietary TCP | 6000 | ❌ No |
+| X1 Carbon | `x1c` | RTSPS | 322 | ✅ FFmpeg → MediaMTX → WebRTC |
+| X1E | `x1e` | RTSPS | 322 | ✅ FFmpeg → MediaMTX → WebRTC |
+| P1P | `p1p` | Proprietary TCP | 6000 | ✅ Native MJPEG stream |
+| P1S | `p1s` | Proprietary TCP | 6000 | ✅ Native MJPEG stream |
+| A1 | `a1` | Proprietary TCP | 6000 | ✅ Native MJPEG stream |
+| A1 Mini | `a1mini` | Proprietary TCP | 6000 | ✅ Native MJPEG stream |
 | Unknown | `unknown` | RTSPS (assumed) | 322 | ✅ (if RTSPS-capable) |
 
 ### RTSPS Models (X1C, X1E)
@@ -214,20 +214,27 @@ rtsps://bblp:<access_code>@<host>:322/streaming/live/1
 
 ### Proprietary Models (P1P, P1S, A1, A1 Mini)
 
-These models use a proprietary TCP JPEG streaming protocol on port 6000. **FFmpeg cannot connect directly.** To stream from these printers, you need a bridge:
+These models use a proprietary TCP JPEG streaming protocol on port 6000. The API connects directly — **no external bridge needed.** It implements the same protocol as the Java BambuWeb app:
 
-1. **[BambuP1Streamer](https://github.com/slynn1324/BambuP1Streamer)** — Converts the proprietary stream to MJPEG/RTSP
-2. **[go2rtc](https://github.com/AlexxIT/go2rtc)** — Can consume the BambuP1Streamer output and publish to MediaMTX
+1. TLS connection to `<printer_ip>:6000` (accepts self-signed certs)
+2. 80-byte binary handshake (username + access code)
+3. Receives JPEG frames with 16-byte headers
+4. Serves frames as an MJPEG stream at `/v1/printers/{id}/stream/mjpeg`
 
-Once you have a bridge running, you can override the stream settings:
+The dashboard automatically uses the MJPEG stream for proprietary models and WebRTC for RTSPS models.
 
+**Snapshot endpoint** — get a single JPEG frame:
 ```bash
-# Example: P1S with go2rtc bridge on port 8554
-cargo run --bin bambu -- add my-p1s 192.168.1.101 03W00X987654321 87654321 \
-  --model p1s --rtsp-port 8554 --rtsp-path /my-p1s
+curl http://127.0.0.1:8080/v1/printers/my-p1s/stream/snapshot --output snapshot.jpg
 ```
 
-Or via the API, set `stream_type` to `"rtsp"` with custom `rtsp_port`/`rtsp_path` pointing to your bridge.
+**MJPEG stream** — continuous stream viewable in browsers:
+```bash
+# Open in browser or VLC
+http://127.0.0.1:8080/v1/printers/my-p1s/stream/mjpeg
+```
+
+**Watchdog**: If no frame is received within 5 minutes, the connection is closed and reconnected after 10 seconds (matching the Java app behavior).
 
 ## Dashboard
 
@@ -447,14 +454,17 @@ Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Method Delet
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
+| GET | `/` | Live dashboard |
 | POST | `/v1/printers` | Upsert (create/update) printer |
 | POST | `/v1/printers/batch` | Batch upsert multiple printers |
 | GET | `/v1/printers` | List all printers |
 | GET | `/v1/printers/{id}` | Get printer details |
 | DELETE | `/v1/printers/{id}` | Delete printer (stops stream if running) |
-| POST | `/v1/printers/{id}/stream/start` | Start FFmpeg stream |
-| POST | `/v1/printers/{id}/stream/stop` | Stop FFmpeg stream |
-| GET | `/v1/printers/{id}/stream/url` | Get WebRTC stream URL |
+| POST | `/v1/printers/{id}/stream/start` | Start stream (FFmpeg for RTSPS, proprietary TCP for P1P/P1S/A1/A1Mini) |
+| POST | `/v1/printers/{id}/stream/stop` | Stop stream |
+| GET | `/v1/printers/{id}/stream/url` | Get stream URL (WebRTC or MJPEG) |
+| GET | `/v1/printers/{id}/stream/snapshot` | Get latest JPEG snapshot (proprietary models only) |
+| GET | `/v1/printers/{id}/stream/mjpeg` | MJPEG stream (proprietary models only) |
 | POST | `/v1/streams/start` | Start streams for all printers |
 | POST | `/v1/streams/stop` | Stop streams for all printers |
 
