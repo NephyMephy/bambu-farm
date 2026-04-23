@@ -10,6 +10,7 @@ Rust web API for LAN-mode Bambu printer live feed orchestration.
 - CLI tool (`bambu`) for easy printer management
 - Per-printer stream process control (FFmpeg -> MediaMTX)
 - WebRTC URL retrieval for active streams
+- Live dashboard with all streams in a grid view
 - Designed to scale to 20+ printers with concurrency guardrails
 - Cross-platform: Linux, macOS, and Windows
 
@@ -96,6 +97,10 @@ cargo run --bin bambu -- get my-printer
 cargo run --bin bambu -- start my-printer
 cargo run --bin bambu -- stop my-printer
 
+# Start/stop all streams
+cargo run --bin bambu -- start-all
+cargo run --bin bambu -- stop-all
+
 # Get stream URL
 cargo run --bin bambu -- url my-printer
 
@@ -171,6 +176,19 @@ Example `printers.json`:
 ```
 
 Generate a template with: `cargo run --bin bambu -- init`
+
+## Dashboard
+
+Open `http://127.0.0.1:8080/` in your browser to see the live dashboard. It shows all registered printers in a grid with:
+
+- Printer ID and host IP labels
+- Live stream state badges (running / starting / stopped / error)
+- Embedded WebRTC stream iframes for running printers
+- Per-printer Start / Stop buttons
+- **Start All** / **Stop All** buttons in the header
+- Auto-refreshes every 10 seconds
+
+The dashboard is a single HTML page served by the API — no additional build step or frontend server needed.
 
 ## API
 
@@ -257,6 +275,28 @@ curl -X POST http://127.0.0.1:8080/v1/printers/printer-1/stream/stop
 Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1/stream/stop -Method Post
 ```
 
+### Start all streams
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/streams/start
+```
+
+**Windows (PowerShell):**
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/streams/start -Method Post
+```
+
+### Stop all streams
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/streams/stop
+```
+
+**Windows (PowerShell):**
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/streams/stop -Method Post
+```
+
 ### Get stream URL
 
 ```bash
@@ -292,6 +332,8 @@ Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Method Delet
 | POST | `/v1/printers/{id}/stream/start` | Start FFmpeg stream |
 | POST | `/v1/printers/{id}/stream/stop` | Stop FFmpeg stream |
 | GET | `/v1/printers/{id}/stream/url` | Get WebRTC stream URL |
+| POST | `/v1/streams/start` | Start streams for all printers |
+| POST | `/v1/streams/stop` | Stop streams for all printers |
 
 ### Batch Upsert
 

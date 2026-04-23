@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bambu Farm — Live Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #1a1d27;
+    border-bottom: 1px solid #2a2d3a;
+  }
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+  }
+  header h1 span { color: #4ade80; }
+  .header-actions { display: flex; gap: 8px; }
+  .btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-start { background: #16a34a; color: #fff; }
+  .btn-start:hover { background: #15803d; }
+  .btn-stop { background: #dc2626; color: #fff; }
+  .btn-stop:hover { background: #b91c1c; }
+  .btn-refresh { background: #3b82f6; color: #fff; }
+  .btn-refresh:hover { background: #2563eb; }
+  .status-bar {
+    display: flex;
+    gap: 20px;
+    padding: 8px 24px;
+    background: #14161e;
+    font-size: 12px;
+    color: #888;
+    border-bottom: 1px solid #2a2d3a;
+  }
+  .status-bar span strong { color: #e0e0e0; }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+  .card {
+    background: #1a1d27;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #2a2d3a;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: #4a4d5a; }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #22253a;
+  }
+  .card-header .label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .card-header .host {
+    font-size: 11px;
+    color: #888;
+    margin-left: 8px;
+  }
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge-running { background: #16a34a33; color: #4ade80; }
+  .badge-starting { background: #ca8a0433; color: #facc15; }
+  .badge-stopped { background: #6b728033; color: #9ca3af; }
+  .badge-error { background: #dc262633; color: #f87171; }
+  .card-body {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+  .card-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+  .card-body .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: #555;
+    font-size: 13px;
+  }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #1a1d27;
+  }
+  .card-actions .btn { font-size: 11px; padding: 4px 10px; }
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    color: #555;
+    text-align: center;
+  }
+  .empty h2 { font-size: 20px; margin-bottom: 8px; color: #888; }
+  .empty p { font-size: 14px; }
+  @media (max-width: 480px) {
+    #grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🖨️ <span>Bambu</span> Farm</h1>
+  <div class="header-actions">
+    <button class="btn btn-start" onclick="startAll()">▶ Start All</button>
+    <button class="btn btn-stop" onclick="stopAll()">■ Stop All</button>
+    <button class="btn btn-refresh" onclick="refresh()">↻ Refresh</button>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span>Printers: <strong id="cnt-printers">0</strong></span>
+  <span>Streams running: <strong id="cnt-running">0</strong></span>
+  <span id="last-refresh">—</span>
+</div>
+
+<div id="grid"></div>
+
+<script>
+const API = location.origin;
+let printers = [];
+
+async function api(path, method = 'GET') {
+  const r = await fetch(API + path, { method });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : null;
+}
+
+function badgeClass(state) {
+  const s = (state || 'stopped').toLowerCase();
+  if (s === 'running') return 'badge-running';
+  if (s === 'starting') return 'badge-starting';
+  if (s === 'error') return 'badge-error';
+  return 'badge-stopped';
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  const running = printers.filter(p => p.stream_state === 'running' || p.stream_state === 'starting').length;
+
+  document.getElementById('cnt-printers').textContent = printers.length;
+  document.getElementById('cnt-running').textContent = running;
+  document.getElementById('last-refresh').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+
+  if (printers.length === 0) {
+    grid.innerHTML = '<div class="empty"><h2>No printers</h2><p>Add printers via the API or CLI to see them here.</p></div>';
+    return;
+  }
+
+  grid.innerHTML = printers.map(p => {
+    const state = p.stream_state || 'stopped';
+    const isLive = state === 'running' || state === 'starting';
+    const webrtcUrl = isLive && p.stream_url ? p.stream_url : '';
+    return `
+      <div class="card" id="card-${p.id}">
+        <div class="card-header">
+          <div>
+            <span class="label">${esc(p.id)}</span>
+            <span class="host">${esc(p.host)}</span>
+          </div>
+          <span class="badge ${badgeClass(state)}">${state}</span>
+        </div>
+        <div class="card-body">
+          ${webrtcUrl
+            ? `<iframe src="${esc(webrtcUrl)}" allow="autoplay" loading="lazy"></iframe>`
+            : `<div class="placeholder">Stream offline</div>`}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-start" onclick="startOne('${esc(p.id)}')">▶ Start</button>
+          <button class="btn btn-stop" onclick="stopOne('${esc(p.id)}')">■ Stop</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function refresh() {
+  try {
+    printers = await api('/v1/printers');
+    render();
+  } catch (e) {
+    console.error('refresh failed:', e);
+  }
+}
+
+async function startOne(id) {
+  try {
+    await api(`/v1/printers/${id}/stream/start`, 'POST');
+    await refresh();
+  } catch (e) { alert('Start failed: ' + e.message); }
+}
+
+async function stopOne(id) {
+  try {
+    await api(`/v1/printers/${id}/stream/stop`, 'POST');
+    await refresh();
+  } catch (e) { alert('Stop failed: ' + e.message); }
+}
+
+async function startAll() {
+  try {
+    await api('/v1/streams/start', 'POST');
+    await refresh();
+  } catch (e) { alert('Start all failed: ' + e.message); }
+}
+
+async function stopAll() {
+  try {
+    await api('/v1/streams/stop', 'POST');
+    await refresh();
+  } catch (e) { alert('Stop all failed: ' + e.message); }
+}
+
+// Auto-refresh every 10 seconds
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

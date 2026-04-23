@@ -100,6 +100,19 @@ pub struct StreamActionResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchStreamResponse {
+    pub started: Vec<String>,
+    pub stopped: Vec<String>,
+    pub errors: Vec<BatchStreamError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchStreamError {
+    pub id: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub ok: bool,
     pub printers_registered: usize,

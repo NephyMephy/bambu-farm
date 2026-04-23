@@ -112,6 +112,14 @@ echo "=== List printers (should have 3) ==="
 curl -s "${BASE}/v1/printers" | jq .
 
 echo ""
+echo "=== Start all streams ==="
+curl -s -X POST "${BASE}/v1/streams/start" | jq .
+
+echo ""
+echo "=== Stop all streams ==="
+curl -s -X POST "${BASE}/v1/streams/stop" | jq .
+
+echo ""
 echo "=== Cleanup batch printers ==="
 for id in batch-1 batch-2 batch-3; do
   CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "${BASE}/v1/printers/${id}")

@@ -8,6 +8,8 @@
 //!   bambu delete <id>                   Delete a printer
 //!   bambu start <id>                    Start stream
 //!   bambu stop <id>                     Stop stream
+//!   bambu start-all                     Start all streams
+//!   bambu stop-all                      Stop all streams
 //!   bambu url <id>                      Get stream URL
 //!   bambu health                        Health check
 //!   bambu init                          Create a printers.json template
@@ -96,6 +98,12 @@ enum Commands {
         id: String,
     },
 
+    /// Start streams for all printers
+    StartAll,
+
+    /// Stop streams for all printers
+    StopAll,
+
     /// Get stream URL
     Url {
         /// Printer ID
@@ -153,6 +161,8 @@ async fn main() {
         Commands::Delete { id } => cmd_delete(&client, &base, cli.json, &id).await,
         Commands::Start { id } => cmd_start(&client, &base, cli.json, &id).await,
         Commands::Stop { id } => cmd_stop(&client, &base, cli.json, &id).await,
+        Commands::StartAll => cmd_start_all(&client, &base, cli.json).await,
+        Commands::StopAll => cmd_stop_all(&client, &base, cli.json).await,
         Commands::Url { id } => cmd_url(&client, &base, cli.json, &id).await,
         Commands::Init { output } => cmd_init(&output),
     };
@@ -481,6 +491,86 @@ async fn cmd_stop(client: &Client, base: &str, raw_json: bool, id: &str) -> Resu
         println!("{}", serde_json::to_string_pretty(&result).unwrap());
     } else {
         println!("{} stream for {}", "■".yellow().bold(), id);
+    }
+    Ok(())
+}
+
+async fn cmd_start_all(client: &Client, base: &str, raw_json: bool) -> Result<(), String> {
+    let resp = client
+        .post(format!("{base}/v1/streams/start"))
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP error: {text}"));
+    }
+
+    let result: serde_json::Value = resp.json().await.map_err(|e| format!("parse error: {e}"))?;
+
+    if raw_json {
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        return Ok(());
+    }
+
+    let started = result["started"].as_array().map(|a| a.len()).unwrap_or(0);
+    let errors = result["errors"].as_array().cloned().unwrap_or_default();
+
+    if started > 0 {
+        println!("{} {} stream(s)", "▶".green().bold(), started);
+    }
+    for err in &errors {
+        eprintln!(
+            "{} {}: {}",
+            "✗".red().bold(),
+            err["id"].as_str().unwrap_or("?"),
+            err["error"].as_str().unwrap_or("unknown error")
+        );
+    }
+
+    if !errors.is_empty() {
+        process::exit(1);
+    }
+    Ok(())
+}
+
+async fn cmd_stop_all(client: &Client, base: &str, raw_json: bool) -> Result<(), String> {
+    let resp = client
+        .post(format!("{base}/v1/streams/stop"))
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP error: {text}"));
+    }
+
+    let result: serde_json::Value = resp.json().await.map_err(|e| format!("parse error: {e}"))?;
+
+    if raw_json {
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        return Ok(());
+    }
+
+    let stopped = result["stopped"].as_array().map(|a| a.len()).unwrap_or(0);
+    let errors = result["errors"].as_array().cloned().unwrap_or_default();
+
+    if stopped > 0 {
+        println!("{} {} stream(s)", "■".yellow().bold(), stopped);
+    }
+    for err in &errors {
+        eprintln!(
+            "{} {}: {}",
+            "✗".red().bold(),
+            err["id"].as_str().unwrap_or("?"),
+            err["error"].as_str().unwrap_or("unknown error")
+        );
+    }
+
+    if !errors.is_empty() {
+        process::exit(1);
     }
     Ok(())
 }

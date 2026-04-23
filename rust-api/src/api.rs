@@ -1,11 +1,12 @@
 use crate::models::{
-    BatchUpsertError, BatchUpsertRequest, BatchUpsertResponse, HealthResponse, PrinterDetailResponse,
-    PrinterRecord, PrinterSummaryResponse, StreamActionResponse, StreamState, UpsertPrinterRequest,
+    BatchStreamError, BatchStreamResponse, BatchUpsertError, BatchUpsertRequest,
+    BatchUpsertResponse, HealthResponse, PrinterDetailResponse, PrinterRecord,
+    PrinterSummaryResponse, StreamActionResponse, StreamState, UpsertPrinterRequest,
 };
 use crate::state::AppState;
 use crate::stream::WorkerManager;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use axum::Json;
 use chrono::Utc;
@@ -301,4 +302,61 @@ pub async fn stream_url(
             .map(|p| WorkerManager::rtsp_publish_url(p, &state.settings)),
         message: "stream URL lookup complete".to_string(),
     }))
+}
+
+pub async fn start_all_streams(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let printers = state.printers.read().await;
+    let mut started = Vec::new();
+    let mut errors = Vec::new();
+
+    for (id, printer) in printers.iter() {
+        match state.workers.start_stream(printer, &state.settings).await {
+            Ok(_) => started.push(id.clone()),
+            Err(e) => errors.push(BatchStreamError {
+                id: id.clone(),
+                error: e,
+            }),
+        }
+    }
+
+    Ok(Json(BatchStreamResponse {
+        started,
+        stopped: Vec::new(),
+        errors,
+    }))
+}
+
+pub async fn stop_all_streams(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let printers = state.printers.read().await;
+    let mut stopped = Vec::new();
+    let mut errors = Vec::new();
+
+    for id in printers.keys() {
+        match state.workers.stop_stream(id).await {
+            Ok(_) => stopped.push(id.clone()),
+            Err(e) => errors.push(BatchStreamError {
+                id: id.clone(),
+                error: e,
+            }),
+        }
+    }
+
+    Ok(Json(BatchStreamResponse {
+        started: Vec::new(),
+        stopped,
+        errors,
+    }))
+}
+
+pub async fn dashboard() -> impl IntoResponse {
+    let html = include_str!("dashboard.html");
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
 }

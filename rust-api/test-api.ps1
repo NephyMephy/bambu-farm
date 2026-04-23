@@ -157,6 +157,16 @@ try {
     $r | ConvertTo-Json
 
     Write-Host ""
+    Write-Host "=== Start all streams ==="
+    $r = Invoke-RestMethod -Uri "$BASE/v1/streams/start" -Method Post
+    $r | ConvertTo-Json
+
+    Write-Host ""
+    Write-Host "=== Stop all streams ==="
+    $r = Invoke-RestMethod -Uri "$BASE/v1/streams/stop" -Method Post
+    $r | ConvertTo-Json
+
+    Write-Host ""
     Write-Host "=== Cleanup batch printers ==="
     foreach ($id in @("batch-1", "batch-2", "batch-3")) {
         try {
