@@ -342,16 +342,42 @@ pub async fn stream_url(
 pub async fn start_all_streams(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let printers = state.printers.read().await;
+    let printers: Vec<PrinterRecord> = state.printers.read().await.values().cloned().collect();
+    let workers = state.workers.clone();
+    let settings = state.settings.clone();
     let mut started = Vec::new();
     let mut errors = Vec::new();
 
-    for (id, printer) in printers.iter() {
-        match state.workers.start_stream(printer, &state.settings).await {
-            Ok(_) => started.push(id.clone()),
+    let mut joins = tokio::task::JoinSet::new();
+    for printer in printers {
+        let id = printer.id.clone();
+        let workers = workers.clone();
+        let settings = settings.clone();
+        joins.spawn(async move {
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                workers.start_stream(&printer, &settings),
+            )
+            .await;
+
+            match result {
+                Ok(Ok(_)) => Ok(id),
+                Ok(Err(e)) => Err(BatchStreamError { id, error: e }),
+                Err(_) => Err(BatchStreamError {
+                    id,
+                    error: "start timed out".to_string(),
+                }),
+            }
+        });
+    }
+
+    while let Some(result) = joins.join_next().await {
+        match result {
+            Ok(Ok(id)) => started.push(id),
+            Ok(Err(err)) => errors.push(err),
             Err(e) => errors.push(BatchStreamError {
-                id: id.clone(),
-                error: e,
+                id: "<task>".to_string(),
+                error: format!("start task failed: {e}"),
             }),
         }
     }

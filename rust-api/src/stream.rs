@@ -37,6 +37,8 @@ struct ProprietaryWorker {
     cancel: watch::Sender<bool>,
     /// Latest JPEG frame receiver.
     latest_frame: watch::Receiver<Option<Arc<Vec<u8>>>>,
+    /// Background task running the proprietary reconnect/read loop.
+    task: tokio::task::JoinHandle<()>,
     _permit: OwnedSemaphorePermit,
 }
 
@@ -171,7 +173,7 @@ impl WorkerManager {
 async fn is_worker_alive(worker: &mut Worker) -> bool {
     match worker {
         Worker::Ffmpeg(fw) => fw.child.try_wait().ok().flatten().is_none(),
-        Worker::Proprietary(pw) => !pw.cancel.is_closed(),
+        Worker::Proprietary(pw) => !pw.task.is_finished(),
     }
 }
 
@@ -235,7 +237,7 @@ async fn start_proprietary(
     let access_code = printer.credentials.access_code.clone();
 
     // Spawn a background task that connects to the printer and reads JPEG frames
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         proprietary_stream_loop(
             &printer_id,
             &host,
@@ -251,6 +253,7 @@ async fn start_proprietary(
     Ok(ProprietaryWorker {
         cancel: cancel_tx,
         latest_frame: frame_rx,
+        task,
         _permit: permit,
     })
 }

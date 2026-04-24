@@ -162,6 +162,10 @@
 <script>
 const API = location.origin;
 let printers = [];
+let lastRenderSignature = '';
+let refreshInFlight = false;
+const FRAME_INTERVAL_MS = 1000;
+let frameTimer = null;
 
 async function api(path, method = 'GET') {
   const r = await fetch(API + path, { method });
@@ -188,8 +192,20 @@ function render() {
 
   if (printers.length === 0) {
     grid.innerHTML = '<div class="empty"><h2>No printers</h2><p>Add printers via the API or CLI to see them here.</p></div>';
+    lastRenderSignature = 'empty';
     return;
   }
+
+  const signature = printers
+    .map(p => [p.id, p.host, p.model, p.stream_type, p.stream_state, p.stream_url || ''].join('|'))
+    .sort()
+    .join('||');
+
+  // Avoid re-rendering if nothing changed; this preserves active iframe/img players.
+  if (signature === lastRenderSignature) {
+    return;
+  }
+  lastRenderSignature = signature;
 
   grid.innerHTML = printers.map(p => {
     const state = p.stream_state || 'stopped';
@@ -211,9 +227,9 @@ function render() {
         </div>
         <div class="card-body">
           ${isLive && isProprietary
-            ? `<img src="${API}/v1/printers/${esc(p.id)}/stream/mjpeg" alt="${esc(p.id)}" style="width:100%;height:100%;object-fit:contain;background:#000;" />`
+            ? `<img class="synced-frame" data-snapshot-base="${API}/v1/printers/${esc(p.id)}/stream/snapshot" src="${API}/v1/printers/${esc(p.id)}/stream/snapshot?t=${Date.now()}" alt="${esc(p.id)}" style="width:100%;height:100%;object-fit:contain;background:#000;" />`
             : webrtcUrl
-              ? `<iframe src="${esc(webrtcUrl)}" allow="autoplay" loading="lazy"></iframe>`
+              ? `<iframe src="${esc(webrtcUrl)}" allow="autoplay"></iframe>`
               : `<div class="placeholder">Stream offline</div>`}
         </div>
         <div class="card-actions">
@@ -222,6 +238,26 @@ function render() {
         </div>
       </div>`;
   }).join('');
+}
+
+function refreshFrames() {
+  const ts = Date.now();
+  document.querySelectorAll('img.synced-frame').forEach((img) => {
+    const base = img.dataset.snapshotBase;
+    if (!base) return;
+    img.src = `${base}?t=${ts}`;
+  });
+}
+
+function ensureFrameTimer() {
+  if (frameTimer !== null) return;
+
+  // Align all cards to the same second boundary so they refresh together.
+  const delay = FRAME_INTERVAL_MS - (Date.now() % FRAME_INTERVAL_MS);
+  setTimeout(() => {
+    refreshFrames();
+    frameTimer = setInterval(refreshFrames, FRAME_INTERVAL_MS);
+  }, delay);
 }
 
 function modelLabelFor(model) {
@@ -244,11 +280,15 @@ function esc(s) {
 }
 
 async function refresh() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     printers = await api('/v1/printers');
     render();
   } catch (e) {
     console.error('refresh failed:', e);
+  } finally {
+    refreshInFlight = false;
   }
 }
 
@@ -283,6 +323,7 @@ async function stopAll() {
 // Auto-refresh every 10 seconds
 refresh();
 setInterval(refresh, 10000);
+ensureFrameTimer();
 </script>
 </body>
 </html>
