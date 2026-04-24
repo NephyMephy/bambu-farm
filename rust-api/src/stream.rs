@@ -318,7 +318,7 @@ async fn proprietary_connect(
     frame_tx: &watch::Sender<Option<Arc<Vec<u8>>>>,
     cancel_rx: &mut watch::Receiver<bool>,
 ) -> Result<(), String> {
-    // Build a TLS config that accepts invalid certificates (like the Java code's setTrustAll)
+    // Match the Java client: trust all certificates and disable hostname verification.
     let config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoVerifier))
@@ -327,11 +327,13 @@ async fn proprietary_connect(
     let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
 
     let addr = format!("{host}:{port}");
-    let stream = tokio::net::TcpStream::connect(&addr).await
+
+    let stream = tokio::net::TcpStream::connect(&addr)
+        .await
         .map_err(|e| format!("TCP connect to {addr} failed: {e}"))?;
 
-    let server_name = rustls_pki_types::ServerName::try_from("localhost")
-        .map_err(|e| format!("invalid server name: {e}"))?;
+    let server_name = rustls_pki_types::ServerName::try_from(host.to_string())
+        .unwrap_or_else(|_| rustls_pki_types::ServerName::try_from("localhost").unwrap());
 
     let mut tls_stream = connector.connect(server_name, stream).await
         .map_err(|e| format!("TLS handshake to {addr} failed: {e}"))?;
@@ -405,7 +407,6 @@ async fn proprietary_connect(
             // Remove the consumed frame from the buffer
             buffer.drain(0..total_frame_size);
 
-            // Update the latest frame
             let frame = Arc::new(jpeg_data);
             let _ = frame_tx.send(Some(frame));
             last_frame_time = std::time::Instant::now();
@@ -445,7 +446,7 @@ fn build_handshake(username: &str, access_code: &str) -> [u8; 80] {
 // ─── TLS Certificate Verifier that accepts everything ────────────────────────
 
 #[derive(Debug)]
-struct NoVerifier;
+pub struct NoVerifier;
 
 impl rustls::client::danger::ServerCertVerifier for NoVerifier {
     fn verify_server_cert(

@@ -179,6 +179,12 @@ pub async fn list_printers(State(state): State<AppState>) -> impl IntoResponse {
     let mut out = Vec::with_capacity(printers.len());
 
     for p in printers {
+        let stream_state = state.workers.state(&p.id).await;
+        let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
+            Some(stream_url_for(&p, &state.settings))
+        } else {
+            None
+        };
         out.push(PrinterSummaryResponse {
             id: p.id.clone(),
             host: p.host,
@@ -186,7 +192,8 @@ pub async fn list_printers(State(state): State<AppState>) -> impl IntoResponse {
             model: p.model,
             stream_type: p.stream.stream_type,
             updated_at: p.updated_at,
-            stream_state: state.workers.state(&p.id).await,
+            stream_state,
+            stream_url,
         });
     }
 

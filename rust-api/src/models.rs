@@ -190,6 +190,7 @@ pub struct PrinterSummaryResponse {
     pub stream_type: StreamType,
     pub updated_at: DateTime<Utc>,
     pub stream_state: StreamState,
+    pub stream_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
