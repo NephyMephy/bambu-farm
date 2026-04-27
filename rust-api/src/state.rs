@@ -1,6 +1,7 @@
 use crate::config::Settings;
 use crate::models::{PrinterModel, PrinterRecord, PrinterStreamConfig};
 use crate::stream::WorkerManager;
+use crate::telemetry::TelemetryManager;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub settings: Settings,
     pub printers: Arc<RwLock<HashMap<String, PrinterRecord>>>,
     pub workers: Arc<WorkerManager>,
+    pub telemetry: Arc<TelemetryManager>,
 }
 
 impl AppState {
@@ -35,6 +37,16 @@ impl AppState {
             settings,
             printers: Arc::new(RwLock::new(printers)),
             workers: Arc::new(workers),
+            telemetry: Arc::new(TelemetryManager::new()),
+        }
+    }
+
+    pub async fn start_telemetry(&self) {
+        let printers: Vec<PrinterRecord> = self.printers.read().await.values().cloned().collect();
+        for printer in printers {
+            self.telemetry
+                .register_printer(printer, self.settings.clone(), self.workers.clone())
+                .await;
         }
     }
 

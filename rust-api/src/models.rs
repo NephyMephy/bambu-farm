@@ -151,6 +151,47 @@ pub struct PrinterRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrinterTelemetrySnapshot {
+    pub updated_at: DateTime<Utc>,
+    pub gcode_state: Option<String>,
+    pub task_name: Option<String>,
+    pub progress: Option<u8>,
+    pub remaining_minutes: Option<i32>,
+    pub layer_num: Option<i32>,
+    pub total_layer_num: Option<i32>,
+    pub nozzle_temper: Option<f64>,
+    pub nozzle_target_temper: Option<f64>,
+    pub bed_temper: Option<f64>,
+    pub bed_target_temper: Option<f64>,
+    pub chamber_temper: Option<f64>,
+    pub print_error: Option<i32>,
+    pub speed_level: Option<i32>,
+    pub print_type: Option<String>,
+}
+
+impl From<crate::telemetry::PrinterTelemetry> for PrinterTelemetrySnapshot {
+    fn from(value: crate::telemetry::PrinterTelemetry) -> Self {
+        Self {
+            updated_at: value.updated_at,
+            gcode_state: value.gcode_state,
+            task_name: value.task_name,
+            progress: value.progress,
+            remaining_minutes: value.remaining_minutes,
+            layer_num: value.layer_num,
+            total_layer_num: value.total_layer_num,
+            nozzle_temper: value.nozzle_temper,
+            nozzle_target_temper: value.nozzle_target_temper,
+            bed_temper: value.bed_temper,
+            bed_target_temper: value.bed_target_temper,
+            chamber_temper: value.chamber_temper,
+            print_error: value.print_error,
+            speed_level: value.speed_level,
+            print_type: value.print_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpsertPrinterRequest {
     pub id: String,
     pub host: String,
@@ -191,6 +232,8 @@ pub struct PrinterSummaryResponse {
     pub updated_at: DateTime<Utc>,
     pub stream_state: StreamState,
     pub stream_url: Option<String>,
+    pub telemetry: Option<PrinterTelemetrySnapshot>,
+    pub stream_auto_managed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +243,8 @@ pub struct PrinterDetailResponse {
     pub stream_url: Option<String>,
     pub rtsp_source_url: String,
     pub rtsp_publish_url: String,
+    pub telemetry: Option<PrinterTelemetrySnapshot>,
+    pub stream_auto_managed: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

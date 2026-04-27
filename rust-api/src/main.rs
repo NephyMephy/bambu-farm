@@ -3,6 +3,7 @@ mod config;
 mod models;
 mod state;
 mod stream;
+mod telemetry;
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -26,6 +27,7 @@ async fn main() {
     let settings = config::Settings::from_env();
     let bind_addr = settings.bind_addr.clone();
     let state = AppState::new(settings);
+    state.start_telemetry().await;
 
     let app = Router::new()
         .route("/health", get(api::health))

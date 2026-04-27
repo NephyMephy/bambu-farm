@@ -32,3 +32,4 @@ rustls-native-certs = "0.7"
 bytes = "1"
 async-stream = "0.3"
 futures = "0.3"
+rumqttc = { version = "0.25", default-features = false, features = ["use-rustls-no-provider"] }

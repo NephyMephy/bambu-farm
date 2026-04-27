@@ -1,7 +1,8 @@
 use crate::models::{
     BatchStreamError, BatchStreamResponse, BatchUpsertError, BatchUpsertRequest,
     BatchUpsertResponse, HealthResponse, PrinterDetailResponse, PrinterModel, PrinterRecord,
-    PrinterSummaryResponse, StreamActionResponse, StreamState, StreamType, UpsertPrinterRequest,
+    PrinterSummaryResponse, PrinterTelemetrySnapshot, StreamActionResponse, StreamState,
+    StreamType, UpsertPrinterRequest,
 };
 use crate::state::AppState;
 use crate::stream::WorkerManager;
@@ -47,6 +48,59 @@ fn stream_url_for(printer: &PrinterRecord, settings: &crate::config::Settings) -
     match printer.stream.stream_type {
         StreamType::Rtsp => settings.webrtc_url_for(&printer.id),
         StreamType::Proprietary => format!("/v1/printers/{}/stream/mjpeg", printer.id),
+    }
+}
+
+async fn telemetry_snapshot(state: &AppState, printer_id: &str) -> Option<PrinterTelemetrySnapshot> {
+    state
+        .telemetry
+        .telemetry_for(printer_id)
+        .await
+        .map(Into::into)
+}
+
+async fn stream_auto_managed(state: &AppState, printer_id: &str) -> bool {
+    state.telemetry.is_auto_managed(printer_id).await
+}
+
+async fn build_summary_response(state: &AppState, printer: &PrinterRecord) -> PrinterSummaryResponse {
+    let stream_state = state.workers.state(&printer.id).await;
+    let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
+        Some(stream_url_for(printer, &state.settings))
+    } else {
+        None
+    };
+
+    PrinterSummaryResponse {
+        id: printer.id.clone(),
+        host: printer.host.clone(),
+        device_id: printer.device_id.clone(),
+        model: printer.model,
+        stream_type: printer.stream.stream_type,
+        updated_at: printer.updated_at,
+        stream_state,
+        stream_url,
+        telemetry: telemetry_snapshot(state, &printer.id).await,
+        stream_auto_managed: stream_auto_managed(state, &printer.id).await,
+    }
+}
+
+async fn build_detail_response(state: &AppState, printer: &PrinterRecord) -> PrinterDetailResponse {
+    let stream_state = state.workers.state(&printer.id).await;
+    let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
+        Some(stream_url_for(printer, &state.settings))
+    } else {
+        None
+    };
+
+    PrinterDetailResponse {
+        rtsp_source_url: WorkerManager::rtsp_source_url(printer),
+        rtsp_publish_url: WorkerManager::rtsp_publish_url(printer, &state.settings),
+        printer: printer.clone(),
+        stream_state,
+        stream_url,
+        telemetry: telemetry_snapshot(state, &printer.id).await,
+        stream_auto_managed: stream_auto_managed(state, &printer.id).await,
     }
 }
 
@@ -105,6 +159,12 @@ pub async fn upsert_printer(
     };
 
     printers.insert(record.id.clone(), record.clone());
+    drop(printers);
+
+    state
+        .telemetry
+        .register_printer(record.clone(), state.settings.clone(), state.workers.clone())
+        .await;
 
     (StatusCode::OK, Json(record)).into_response()
 }
@@ -116,6 +176,7 @@ pub async fn batch_upsert_printers(
     let mut created = Vec::new();
     let mut updated = Vec::new();
     let mut errors = Vec::new();
+    let mut registered = Vec::new();
 
     let now = Utc::now();
     let mut printers = state.printers.write().await;
@@ -162,13 +223,23 @@ pub async fn batch_upsert_printers(
             updated_at: now,
         };
 
-        printers.insert(record.id.clone(), record);
+        printers.insert(record.id.clone(), record.clone());
+        registered.push(record);
 
         if is_new {
             created.push(printer_req.id);
         } else {
             updated.push(printer_req.id);
         }
+    }
+
+    drop(printers);
+
+    for record in registered {
+        state
+            .telemetry
+            .register_printer(record, state.settings.clone(), state.workers.clone())
+            .await;
     }
 
     (StatusCode::OK, Json(BatchUpsertResponse { created, updated, errors })).into_response()
@@ -179,22 +250,7 @@ pub async fn list_printers(State(state): State<AppState>) -> impl IntoResponse {
     let mut out = Vec::with_capacity(printers.len());
 
     for p in printers {
-        let stream_state = state.workers.state(&p.id).await;
-        let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
-            Some(stream_url_for(&p, &state.settings))
-        } else {
-            None
-        };
-        out.push(PrinterSummaryResponse {
-            id: p.id.clone(),
-            host: p.host,
-            device_id: p.device_id,
-            model: p.model,
-            stream_type: p.stream.stream_type,
-            updated_at: p.updated_at,
-            stream_state,
-            stream_url,
-        });
+        out.push(build_summary_response(&state, &p).await);
     }
 
     Json(out)
@@ -212,20 +268,7 @@ pub async fn get_printer(
         .cloned()
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let stream_state = state.workers.state(&printer_id).await;
-    let stream_url = if matches!(stream_state, StreamState::Running | StreamState::Starting) {
-        Some(stream_url_for(&printer, &state.settings))
-    } else {
-        None
-    };
-
-    Ok(Json(PrinterDetailResponse {
-        rtsp_source_url: WorkerManager::rtsp_source_url(&printer),
-        rtsp_publish_url: WorkerManager::rtsp_publish_url(&printer, &state.settings),
-        printer,
-        stream_state,
-        stream_url,
-    }))
+    Ok(Json(build_detail_response(&state, &printer).await))
 }
 
 pub async fn start_stream(
@@ -245,6 +288,8 @@ pub async fn start_stream(
         .start_stream(&printer, &state.settings)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+
+    state.telemetry.mark_manual(&printer_id).await;
 
     Ok(Json(StreamActionResponse {
         printer_id,
@@ -266,6 +311,8 @@ pub async fn stop_stream(
         .await
         .get(&printer_id)
         .ok_or((StatusCode::NOT_FOUND, "printer not found".to_string()))?;
+
+    state.telemetry.clear_ownership(&printer_id).await;
 
     let stream_state = state
         .workers
@@ -295,6 +342,7 @@ pub async fn delete_printer(
 
     // Stop any running stream for this printer
     drop(printers); // release write lock before acquiring worker lock
+    state.telemetry.unregister_printer(&printer_id).await;
     let _ = state.workers.stop_stream(&printer_id).await;
 
     Ok(StatusCode::NO_CONTENT)
@@ -344,6 +392,7 @@ pub async fn start_all_streams(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let printers: Vec<PrinterRecord> = state.printers.read().await.values().cloned().collect();
     let workers = state.workers.clone();
+    let telemetry = state.telemetry.clone();
     let settings = state.settings.clone();
     let mut started = Vec::new();
     let mut errors = Vec::new();
@@ -352,6 +401,7 @@ pub async fn start_all_streams(
     for printer in printers {
         let id = printer.id.clone();
         let workers = workers.clone();
+        let telemetry = telemetry.clone();
         let settings = settings.clone();
         joins.spawn(async move {
             let result = tokio::time::timeout(
@@ -361,7 +411,10 @@ pub async fn start_all_streams(
             .await;
 
             match result {
-                Ok(Ok(_)) => Ok(id),
+                Ok(Ok(_)) => {
+                    telemetry.mark_manual(&id).await;
+                    Ok(id)
+                }
                 Ok(Err(e)) => Err(BatchStreamError { id, error: e }),
                 Err(_) => Err(BatchStreamError {
                     id,
@@ -397,6 +450,7 @@ pub async fn stop_all_streams(
     let mut errors = Vec::new();
 
     for id in printers.keys() {
+        state.telemetry.clear_ownership(id).await;
         match state.workers.stop_stream(id).await {
             Ok(_) => stopped.push(id.clone()),
             Err(e) => errors.push(BatchStreamError {
