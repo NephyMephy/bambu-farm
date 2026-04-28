@@ -1,6 +1,6 @@
 use crate::auth::{LoginRequest, LoginResponse, Role};
 use crate::state::AppState;
-use axum::extract::{State, ConnectInfo};
+use axum::extract::{State, ConnectInfo, Path};
 use axum::http::{StatusCode, HeaderMap};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -159,4 +159,132 @@ pub async fn list_users(
         .collect();
 
     Ok(Json(ListUsersResponse { users: responses }))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateUserRequest {
+    pub username: Option<String>,
+    /// None = don't change, Some(null) = clear email, Some("value") = set email
+    pub email: Option<Option<String>>,
+    pub role: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+/// PUT /admin/users/{id} (admin only)
+#[axum::debug_handler]
+pub async fn update_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    Json(req): Json<UpdateUserRequest>,
+) -> Result<Json<UserResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" }))))?;
+
+    let user = state.users.verify_session(token, "127.0.0.1").await
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" }))))?;
+
+    if !user.role.can_manage_users() {
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Only admins can update users" }))));
+    }
+
+    let role = match req.role {
+        Some(ref r) => Some(match r.to_lowercase().as_str() {
+            "admin" => Role::Admin,
+            "teacher" => Role::Teacher,
+            "assistant" => Role::Assistant,
+            _ => return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Invalid role" })))),
+        }),
+        None => None,
+    };
+
+    let updated = state.users.update_user(
+        &user_id,
+        req.username,
+        req.email,
+        role,
+        req.is_active,
+    ).await
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))?;
+
+    Ok(Json(UserResponse {
+        id: updated.id,
+        username: updated.username,
+        role: format!("{:?}", updated.role).to_lowercase(),
+        email: updated.email,
+        is_active: updated.is_active,
+    }))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: Option<String>,
+    pub new_password: String,
+}
+
+/// PUT /admin/users/{id}/password (admin or self)
+#[axum::debug_handler]
+pub async fn change_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" }))))?;
+
+    let requester = state.users.verify_session(token, "127.0.0.1").await
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" }))))?;
+
+    let is_self = requester.id == user_id;
+    let is_admin = requester.role.can_manage_users();
+
+    if !is_self && !is_admin {
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Cannot change another user's password" }))));
+    }
+
+    // Self-service requires current password; admin can reset without it
+    let current: Option<&str> = if is_self {
+        Some(req.current_password.as_deref()
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Current password is required" }))))?)
+    } else {
+        None
+    };
+
+    state.users.change_password(&user_id, current, &req.new_password).await
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))?;
+
+    Ok(Json(serde_json::json!({ "message": "Password updated successfully" })))
+}
+
+/// DELETE /admin/users/{id} (admin only)
+#[axum::debug_handler]
+pub async fn delete_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" }))))?;
+
+    let user = state.users.verify_session(token, "127.0.0.1").await
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" }))))?;
+
+    if !user.role.can_manage_users() {
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Only admins can delete users" }))));
+    }
+
+    state.users.delete_user(&user_id, &user.id).await
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))?;
+
+    Ok(Json(serde_json::json!({ "message": "User deleted" })))
 }

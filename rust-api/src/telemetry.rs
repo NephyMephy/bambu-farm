@@ -2,18 +2,28 @@ use crate::config::Settings;
 use crate::models::PrinterRecord;
 use crate::stream::WorkerManager;
 use chrono::{DateTime, Utc};
-use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS, TlsConfiguration, Transport};
+use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, Outgoing, QoS, TlsConfiguration, Transport};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{watch, Mutex, RwLock};
 use tokio::time::{Duration, MissedTickBehavior};
 use tokio_rustls::rustls;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
-const MQTT_KEEP_ALIVE_SECS: u64 = 60;
+const MQTT_KEEP_ALIVE_SECS: u64 = 30;
 const MQTT_RECONNECT_DELAY_SECS: u64 = 5;
-const MQTT_FULL_STATUS_INTERVAL_SECS: u64 = 30;
+const MQTT_FULL_STATUS_INTERVAL_SECS: u64 = 300; // 5 min — avoid lagging P1 series
+const MQTT_CONNECTION_TIMEOUT_SECS: u64 = 10;
+const MQTT_CLEAN_SESSION: bool = true;
+
+/// Global sequence ID counter for MQTT requests
+static SEQUENCE_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_sequence_id() -> String {
+    SEQUENCE_ID.fetch_add(1, Ordering::Relaxed).to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterTelemetry {
@@ -215,14 +225,29 @@ fn build_tls_config() -> rustls::ClientConfig {
 }
 
 fn build_mqtt_options(printer: &PrinterRecord) -> MqttOptions {
+    // Per OpenBambuAPI: local MQTT uses username "bblp", password = LAN access code
+    let username = if printer.credentials.username.is_empty() {
+        "bblp".to_string()
+    } else {
+        printer.credentials.username.clone()
+    };
+
     let mut options = MqttOptions::new(
-        format!("bambu-live-api-{}", printer.id),
+        // Client ID must be unique per connection
+        format!("bambu-farm-{}", printer.id),
         printer.host.clone(),
-        8883,
+        8883, // Bambu printers use port 8883 with TLS
     );
-    options.set_credentials(printer.credentials.username.clone(), printer.credentials.access_code.clone());
+    options.set_credentials(username, printer.credentials.access_code.clone());
     options.set_keep_alive(Duration::from_secs(MQTT_KEEP_ALIVE_SECS));
-    options.set_transport(Transport::tls_with_config(TlsConfiguration::Rustls(Arc::new(build_tls_config()))));
+    options.set_clean_session(MQTT_CLEAN_SESSION);
+
+    // Bambu printers use self-signed certs issued by BBL CA.
+    // The printer cert CN is the serial number, but we connect by IP.
+    // We must disable cert verification (or trust BBL CA + skip hostname check).
+    let tls_config = build_tls_config();
+    options.set_transport(Transport::tls_with_config(TlsConfiguration::Rustls(Arc::new(tls_config))));
+
     options
 }
 
@@ -235,12 +260,13 @@ fn request_topic(printer: &PrinterRecord) -> String {
 }
 
 async fn publish_full_status(client: &AsyncClient, printer: &PrinterRecord) -> Result<(), String> {
+    // Per OpenBambuAPI: pushing.pushall request format
     let payload = serde_json::json!({
         "pushing": {
+            "sequence_id": next_sequence_id(),
             "command": "pushall",
-            "push_target": 1,
             "version": 1,
-            "sequence_id": "1"
+            "push_target": 1
         }
     });
 
@@ -273,22 +299,20 @@ async fn run_printer_telemetry(
 
         let options = build_mqtt_options(&printer);
         let (client, mut eventloop) = AsyncClient::new(options, 10);
-        let connected = client
-            .subscribe(report_topic.clone(), QoS::AtMostOnce)
-            .await;
 
-        if let Err(e) = connected {
-            error!(printer = %printer.id, "failed to subscribe to telemetry topic: {e}");
-            wait_before_reconnect(&mut cancel_rx).await;
-            continue;
-        }
+        // Wait for ConnAck before subscribing — rumqttc requires connection first
+        let mut connected = false;
+        let mut subscribe_requested = false;
+        let mut pushall_requested = false;
 
-        info!(printer = %printer.id, topic = %report_topic, "telemetry connected");
+        info!(printer = %printer.id, host = %printer.host, "connecting to MQTT...");
 
         let refresh_secs = MQTT_FULL_STATUS_INTERVAL_SECS;
         let mut refresh = tokio::time::interval(Duration::from_secs(refresh_secs));
         refresh.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let _ = publish_full_status(&client, &printer).await;
+
+        // Connection timeout
+        let mut connect_timeout = tokio::time::interval(Duration::from_secs(MQTT_CONNECTION_TIMEOUT_SECS));
 
         loop {
             tokio::select! {
@@ -297,17 +321,58 @@ async fn run_printer_telemetry(
                     return;
                 }
                 _ = refresh.tick() => {
-                    if let Err(e) = publish_full_status(&client, &printer).await {
-                        warn!(printer = %printer.id, "failed to refresh telemetry: {e}");
+                    if connected {
+                        if let Err(e) = publish_full_status(&client, &printer).await {
+                            warn!(printer = %printer.id, "failed to refresh telemetry: {e}");
+                        } else {
+                            debug!(printer = %printer.id, "requested pushall refresh");
+                        }
+                    }
+                }
+                _ = connect_timeout.tick() => {
+                    if !connected {
+                        warn!(printer = %printer.id, "MQTT connection timeout, reconnecting...");
+                        break;
                     }
                 }
                 event = eventloop.poll() => {
                     match event {
+                        Ok(Event::Incoming(Incoming::ConnAck(ack))) => {
+                            if ack.code == rumqttc::ConnectReturnCode::Success {
+                                info!(printer = %printer.id, "MQTT connected, subscribing...");
+                                connected = true;
+                                // Subscribe after successful connection
+                                if let Err(e) = client.subscribe(report_topic.clone(), QoS::AtLeastOnce).await {
+                                    error!(printer = %printer.id, "failed to subscribe: {e}");
+                                    break;
+                                }
+                                subscribe_requested = true;
+                            } else {
+                                error!(printer = %printer.id, "MQTT connection refused: {:?}", ack.code);
+                                break;
+                            }
+                        }
+                        Ok(Event::Incoming(Incoming::SubAck(_))) => {
+                            if subscribe_requested && !pushall_requested {
+                                // Request initial full status after subscription confirmed
+                                if let Err(e) = publish_full_status(&client, &printer).await {
+                                    warn!(printer = %printer.id, "failed to request initial pushall: {e}");
+                                } else {
+                                    info!(printer = %printer.id, "requested initial pushall");
+                                }
+                                pushall_requested = true;
+                            }
+                        }
                         Ok(Event::Incoming(Incoming::Publish(packet))) if packet.topic == report_topic => {
                             if let Ok(body) = std::str::from_utf8(&packet.payload) {
+                                debug!(printer = %printer.id, "received MQTT message ({} bytes)", body.len());
                                 if let Ok(message) = serde_json::from_str::<BambuMessage>(body) {
-                                    if let Some(print) = message.print {
-                                        let telemetry = map_print(&print);
+                                    if let Some(print_data) = message.print {
+                                        // P1 series sends delta updates — merge with existing telemetry
+                                        let telemetry = {
+                                            let existing = cache.read().await.get(&printer.id).cloned();
+                                            merge_print(existing, &print_data)
+                                        };
                                         let auto = auto_managed.read().await.get(&printer.id).copied().unwrap_or(false);
 
                                         update_cache(&cache, &printer.id, telemetry.clone()).await;
@@ -332,9 +397,24 @@ async fn run_printer_telemetry(
                                 }
                             }
                         }
-                        Ok(_) => {}
+                        Ok(Event::Incoming(Incoming::Disconnect)) => {
+                            warn!(printer = %printer.id, "MQTT server sent disconnect");
+                            break;
+                        }
+                        Ok(Event::Incoming(Incoming::PingResp)) => {
+                            debug!(printer = %printer.id, "MQTT ping response");
+                        }
+                        Ok(Event::Outgoing(Outgoing::PingReq)) => {
+                            debug!(printer = %printer.id, "MQTT ping sent");
+                        }
+                        Ok(Event::Incoming(Incoming::PubAck(_))) | Ok(Event::Incoming(Incoming::PubRec(_))) => {
+                            // Acknowledgments — normal, ignore
+                        }
+                        Ok(_) => {
+                            // Other incoming events (SubAck handled above, etc.)
+                        }
                         Err(e) => {
-                            warn!(printer = %printer.id, "telemetry connection error: {e}");
+                            warn!(printer = %printer.id, "MQTT connection error: {e}");
                             break;
                         }
                     }
@@ -342,7 +422,7 @@ async fn run_printer_telemetry(
             }
         }
 
-        wait_before_reconnect(&mut cancel_rx).await;
+        warn!(printer = %printer.id, "MQTT disconnected, waiting {}s before reconnect...", MQTT_RECONNECT_DELAY_SECS);        wait_before_reconnect(&mut cancel_rx).await;
     }
 }
 
@@ -370,23 +450,31 @@ async fn update_cache(
     cache.write().await.insert(printer_id.to_string(), telemetry);
 }
 
-fn map_print(print: &BambuPrint) -> PrinterTelemetry {
+/// Merge incoming print data with existing telemetry.
+/// P1 series only sends changed fields (delta updates), so we must preserve
+/// existing values for fields not present in the incoming message.
+fn merge_print(existing: Option<PrinterTelemetry>, print: &BambuPrint) -> PrinterTelemetry {
+    let base = existing.unwrap_or_default();
+
     PrinterTelemetry {
         updated_at: Utc::now(),
-        gcode_state: print.gcode_state.clone(),
-        task_name: print.subtask_name.clone().or_else(|| print.gcode_file.clone()),
-        progress: print.mc_percent.map(|p| p.clamp(0, 100) as u8),
-        remaining_minutes: print.mc_remaining_time,
-        layer_num: print.layer_num,
-        total_layer_num: print.total_layer_num,
-        nozzle_temper: print.nozzle_temper,
-        nozzle_target_temper: print.nozzle_target_temper,
-        bed_temper: print.bed_temper,
-        bed_target_temper: print.bed_target_temper,
-        chamber_temper: print.chamber_temper,
-        print_error: print.print_error,
-        speed_level: print.spd_lvl,
-        print_type: print.print_type.clone(),
+        // Only overwrite fields that are present in the incoming message
+        gcode_state: print.gcode_state.clone().or(base.gcode_state),
+        task_name: print.subtask_name.clone()
+            .or_else(|| print.gcode_file.clone())
+            .or(base.task_name),
+        progress: print.mc_percent.map(|p| p.clamp(0, 100) as u8).or(base.progress),
+        remaining_minutes: print.mc_remaining_time.or(base.remaining_minutes),
+        layer_num: print.layer_num.or(base.layer_num),
+        total_layer_num: print.total_layer_num.or(base.total_layer_num),
+        nozzle_temper: print.nozzle_temper.or(base.nozzle_temper),
+        nozzle_target_temper: print.nozzle_target_temper.or(base.nozzle_target_temper),
+        bed_temper: print.bed_temper.or(base.bed_temper),
+        bed_target_temper: print.bed_target_temper.or(base.bed_target_temper),
+        chamber_temper: print.chamber_temper.or(base.chamber_temper),
+        print_error: print.print_error.or(base.print_error),
+        speed_level: print.spd_lvl.or(base.speed_level),
+        print_type: print.print_type.clone().or(base.print_type),
     }
 }
 

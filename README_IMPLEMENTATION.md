@@ -111,10 +111,10 @@ http://localhost:8080/admin
 
 ### Test API
 ```bash
-# Login
+# Login (seed admin auto-created on first startup)
 curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"TestPass123"}'
+  -d '{"username":"admin","password":"Admin1234!"}'
 
 # Submit job
 curl -X POST http://localhost:8080/api/v2/jobs/submit \
@@ -137,6 +137,9 @@ GET    /auth/me                 # Get current user profile
 ```
 POST   /admin/users             # Create new user (admin only)
 GET    /admin/users             # List all users (admin only)
+PUT    /admin/users/{id}        # Update user profile (admin only)
+PUT    /admin/users/{id}/password  # Change password (self or admin)
+DELETE /admin/users/{id}        # Delete user (admin only, cannot delete self)
 ```
 
 ### Job Submission Endpoints
@@ -229,6 +232,42 @@ Cargo.toml                # Added async-trait dependency
 }
 ```
 This object appears as `current_job` in the printer summary response when a job is dispatched to that printer.
+
+## MQTT Telemetry (Printer Connection)
+
+Based on [OpenBambuAPI](https://github.com/Doridian/OpenBambuAPI/blob/main/mqtt.md) protocol:
+
+### Connection Details
+| Parameter | Value |
+|-----------|-------|
+| **Host** | `{PRINTER_IP}` |
+| **Port** | `8883` (TLS) |
+| **Username** | `bblp` (local) or `u_{USER_ID}` (cloud) |
+| **Password** | LAN access code (local) or access token (cloud) |
+| **TLS** | Self-signed cert by BBL CA — verification disabled |
+| **Keep Alive** | 30 seconds |
+
+### MQTT Topics
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `device/{DEVICE_ID}/report` | Printer → API | Telemetry data, status updates |
+| `device/{DEVICE_ID}/request` | API → Printer | Commands (pushall, print control) |
+
+### Key Fixes Applied
+- **Subscribe-after-connect**: Wait for `ConnAck` before subscribing (was racing before)
+- **P1 series delta merge**: P1 printers only send changed fields — merge with existing telemetry instead of replacing
+- **Pushall interval**: 5 minutes (not 30s) to avoid lagging P1 series hardware
+- **Connection timeout**: 10s — fail fast and reconnect instead of hanging
+- **Proper sequence IDs**: Incrementing per-request instead of hardcoded "1"
+- **Default username**: Falls back to `bblp` if username is empty
+
+### Telemetry Data Flow
+```
+Printer → MQTT (device/{ID}/report) → rumqttc eventloop → merge_print() → cache → API response
+                                                              ↑
+                                              P1: delta merge with existing
+                                              X1: full replace (sends complete object)
+```
 
 ## Security Features
 

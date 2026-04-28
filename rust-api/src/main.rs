@@ -11,7 +11,7 @@ mod telemetry;
 
 use axum::http::header;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use state::AppState;
 use tracing::info;
@@ -43,6 +43,8 @@ async fn main() {
         .route("/auth/logout", post(endpoints::logout))
         .route("/auth/me", get(endpoints::get_current_user))
         .route("/admin/users", post(endpoints::create_user).get(endpoints::list_users))
+        .route("/admin/users/{id}", put(endpoints::update_user).delete(endpoints::delete_user))
+        .route("/admin/users/{id}/password", put(endpoints::change_password))
         .route("/api/v2/jobs/submit", post(job_endpoints::submit_job))
         .route("/api/v2/jobs", get(job_endpoints::list_jobs))
         .route("/api/v2/jobs/{id}", get(job_endpoints::get_job))

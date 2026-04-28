@@ -316,6 +316,145 @@ impl UserStore {
 
         self.login_attempts.write().await.push(attempt);
     }
+
+    /// Update user profile (username, email, role, active status)
+    pub async fn update_user(
+        &self,
+        user_id: &str,
+        username: Option<String>,
+        email: Option<Option<String>>,
+        role: Option<Role>,
+        is_active: Option<bool>,
+    ) -> Result<User, String> {
+        // Validate username uniqueness before acquiring write lock
+        if let Some(ref new_username) = username {
+            if new_username.len() < 3 || new_username.len() > 32 {
+                return Err("Username must be 3-32 characters".to_string());
+            }
+            if !new_username.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err("Username must be alphanumeric or underscore only".to_string());
+            }
+            let users = self.users.read().await;
+            if users.values().any(|u| u.username == *new_username && u.id != user_id) {
+                return Err("Username already exists".to_string());
+            }
+        }
+
+        let mut users = self.users.write().await;
+        let user = users.get_mut(user_id)
+            .ok_or_else(|| "User not found".to_string())?;
+
+        if let Some(ref new_username) = username {
+            user.username = new_username.clone();
+        }
+
+        // email: None = not changing, Some(None) = clear email, Some(Some(v)) = set email
+        if let Some(ref e) = email {
+            user.email = e.clone();
+        }
+
+        if let Some(r) = role {
+            user.role = r;
+        }
+
+        if let Some(active) = is_active {
+            user.is_active = active;
+        }
+
+        user.updated_at = Utc::now();
+        Ok(user.clone())
+    }
+
+    /// Change user password
+    pub async fn change_password(
+        &self,
+        user_id: &str,
+        current_password: Option<&str>,
+        new_password: &str,
+    ) -> Result<(), String> {
+        // Validate new password strength
+        if new_password.len() < 10 {
+            return Err("Password must be at least 10 characters".to_string());
+        }
+        if !new_password.chars().any(|c| c.is_uppercase()) {
+            return Err("Password must contain uppercase letter".to_string());
+        }
+        if !new_password.chars().any(|c| c.is_lowercase()) {
+            return Err("Password must contain lowercase letter".to_string());
+        }
+        if !new_password.chars().any(|c| c.is_numeric()) {
+            return Err("Password must contain digit".to_string());
+        }
+
+        let mut users = self.users.write().await;
+        let user = users.get_mut(user_id)
+            .ok_or_else(|| "User not found".to_string())?;
+
+        // If current_password is provided, verify it (self-service change)
+        if let Some(current) = current_password {
+            if !Self::verify_password(current, &user.password_hash) {
+                return Err("Current password is incorrect".to_string());
+            }
+        }
+
+        user.password_hash = Self::hash_password(new_password);
+        user.updated_at = Utc::now();
+
+        // Revoke all sessions for this user to force re-login
+        let user_id_owned = user.id.clone();
+        drop(users); // release write lock before acquiring sessions lock
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.retain(|_, s| s.user_id != user_id_owned);
+        }
+
+        Ok(())
+    }
+
+    /// Delete a user (cannot delete self)
+    pub async fn delete_user(&self, user_id: &str, requester_id: &str) -> Result<(), String> {
+        if user_id == requester_id {
+            return Err("Cannot delete your own account".to_string());
+        }
+
+        let mut users = self.users.write().await;
+        let removed = users.remove(user_id);
+        if removed.is_none() {
+            return Err("User not found".to_string());
+        }
+
+        // Revoke all sessions for deleted user
+        drop(users);
+        {
+            let mut sessions = self.sessions.write().await;
+            sessions.retain(|_, s| s.user_id != user_id);
+        }
+
+        Ok(())
+    }
+
+    /// Seed a default admin user if no users exist
+    pub async fn seed_admin(&self) {
+        let users = self.users.read().await;
+        if !users.is_empty() {
+            return;
+        }
+        drop(users);
+
+        match self.create_user(
+            "admin".to_string(),
+            Some("admin@bambu-farm.local".to_string()),
+            "Admin1234!".to_string(),
+            Role::Admin,
+        ).await {
+            Ok(user) => {
+                tracing::info!(" seeded default admin user: {} (password: Admin1234!)", user.username);
+            }
+            Err(e) => {
+                tracing::warn!("failed to seed admin user: {e}");
+            }
+        }
+    }
 }
 
 /// Generate simple UUID (deterministic, for testing)

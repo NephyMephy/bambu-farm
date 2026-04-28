@@ -48,6 +48,9 @@ impl AppState {
     }
 
     pub async fn start_telemetry(&self) {
+        // Seed default admin user if no users exist
+        self.users.seed_admin().await;
+
         let printers: Vec<PrinterRecord> = self.printers.read().await.values().cloned().collect();
         for printer in printers {
             self.telemetry
