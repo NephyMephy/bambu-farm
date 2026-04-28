@@ -36,12 +36,18 @@ cargo run --bin bambu-live-api
 ## Quick Test Sequence
 
 ### 1. Login as Admin
-Create an initial admin user (first login creates admin):
+A seed admin account is created automatically on first server startup:
+
+| Field | Value |
+|-------|-------|
+| **Username** | `admin` |
+| **Password** | `Admin1234!` |
+| **Role** | `admin` |
+
 ```bash
-# Note: First user needs to be created manually or via API with special bootstrapping
 curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"AdminPass123"}'
+  -d '{"username":"admin","password":"Admin1234!"}'
 
 # Response:
 # {
@@ -60,13 +66,41 @@ TOKEN="def456..."
 $response = Invoke-RestMethod -Uri "http://localhost:8080/auth/login" `
   -Method POST `
   -ContentType "application/json" `
-  -Body '{"username":"admin","password":"AdminPass123"}'
+  -Body '{"username":"admin","password":"Admin1234!"}'
 
 # Response is auto-parsed; save the token:
 $TOKEN = $response.token
 ```
 
-### 2. Create Teacher Account
+### 2. Change Admin Password (Recommended)
+Change the seed admin password on first login. Self-service requires the current password:
+
+```bash
+# Get your user ID from the login response or /auth/me
+ADMIN_USER_ID="abc123..."
+
+curl -X PUT http://localhost:8080/admin/users/$ADMIN_USER_ID/password \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"current_password":"Admin1234!","new_password":"MyNewSecurePass1!"}'
+```
+
+```powershell
+# PowerShell
+$ADMIN_USER_ID = $response.user_id
+$headers = @{ "Authorization" = "Bearer $TOKEN" }
+Invoke-RestMethod -Uri "http://localhost:8080/admin/users/$ADMIN_USER_ID/password" `
+  -Method PUT `
+  -ContentType "application/json" `
+  -Headers $headers `
+  -Body '{"current_password":"Admin1234!","new_password":"MyNewSecurePass1!"}'
+```
+
+> **Note:** Changing the password revokes all active sessions — you'll need to log in again afterward.
+>
+> An admin can also reset another user's password without knowing the current one — just omit `current_password` from the request body.
+
+### 3. Create Teacher Account
 ```bash
 curl -X POST http://localhost:8080/admin/users \
   -H "Content-Type: application/json" \
@@ -94,7 +128,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
   }'
 ```
 
-### 3. Submit Print Job (Public - No Auth Required)
+### 4. Submit Print Job (Public - No Auth Required)
 ```bash
 curl -X POST http://localhost:8080/api/v2/jobs/submit \
   -H "Content-Type: application/json" \
@@ -133,7 +167,7 @@ $job = Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/submit" `
 $JOB_ID = $job.id
 ```
 
-### 4. View Job Queue (Teacher Auth Required)
+### 5. View Job Queue (Teacher Auth Required)
 ```bash
 TEACHER_TOKEN="teacher_token_from_step2"
 
@@ -150,7 +184,7 @@ $headers = @{ "Authorization" = "Bearer $TEACHER_TOKEN" }
 Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/queue" -Headers $headers
 ```
 
-### 5. Dispatch Job to Printer (Teacher Auth Required)
+### 6. Dispatch Job to Printer (Teacher Auth Required)
 ```bash
 PRINTER_ID="printer_01"
 
@@ -173,7 +207,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/$JOB_ID/dispatch/$PRIN
   -Headers $headers
 ```
 
-### 6. Check Job Status (Public - Anyone)
+### 7. Check Job Status (Public - Anyone)
 ```bash
 curl http://localhost:8080/api/v2/jobs/$JOB_ID
 
@@ -185,7 +219,7 @@ curl http://localhost:8080/api/v2/jobs/$JOB_ID
 Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/$JOB_ID"
 ```
 
-### 7. Access Admin Console
+### 8. Access Admin Console
 Open browser: **http://localhost:8080/admin**
 
 Features:
@@ -194,7 +228,7 @@ Features:
 - View all jobs and queue
 - Dashboard with metrics
 
-### 8. View Printer Dashboard
+### 9. View Printer Dashboard
 Open browser: **http://localhost:8080/**
 
 Each printer card shows:
@@ -233,10 +267,13 @@ Each printer card shows:
 | GET | `/auth/me` | Bearer | Get current user profile |
 
 ### User Management
-| Method | Endpoint | Auth | Role Required |
-|--------|----------|------|---------------|
-| POST | `/admin/users` | Bearer | Admin |
-| GET | `/admin/users` | Bearer | Admin |
+| Method | Endpoint | Auth | Role Required | Description |
+|--------|----------|------|---------------|-------------|
+| POST | `/admin/users` | Bearer | Admin | Create new user |
+| GET | `/admin/users` | Bearer | Admin | List all users |
+| PUT | `/admin/users/{id}` | Bearer | Admin | Update user (username, email, role, active) |
+| PUT | `/admin/users/{id}/password` | Bearer | Admin or Self | Change password (self=current required, admin=no current needed) |
+| DELETE | `/admin/users/{id}` | Bearer | Admin | Delete user (cannot delete self) |
 
 ### Job Submission & Management
 | Method | Endpoint | Auth | Description |
