@@ -11,9 +11,9 @@ use tokio::time::{Duration, MissedTickBehavior};
 use tokio_rustls::rustls;
 use tracing::{error, info, warn};
 
-const MQTT_KEEP_ALIVE_SECS: u64 = 30;
+const MQTT_KEEP_ALIVE_SECS: u64 = 60;
 const MQTT_RECONNECT_DELAY_SECS: u64 = 5;
-const MQTT_FULL_STATUS_INTERVAL_SECS: u64 = 600;
+const MQTT_FULL_STATUS_INTERVAL_SECS: u64 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterTelemetry {
