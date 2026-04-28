@@ -1,5 +1,9 @@
 mod api;
+mod auth;
 mod config;
+mod endpoints;
+mod job_endpoints;
+mod jobs;
 mod models;
 mod state;
 mod stream;
@@ -32,6 +36,17 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(api::health))
         .route("/", get(api::dashboard))
+        .route("/admin", get(serve_admin_console))
+        .route("/auth/login", post(endpoints::login))
+        .route("/auth/logout", post(endpoints::logout))
+        .route("/auth/me", get(endpoints::get_current_user))
+        .route("/admin/users", post(endpoints::create_user).get(endpoints::list_users))
+        .route("/api/v2/jobs/submit", post(job_endpoints::submit_job))
+        .route("/api/v2/jobs", get(job_endpoints::list_jobs))
+        .route("/api/v2/jobs/{id}", get(job_endpoints::get_job))
+        .route("/api/v2/jobs/queue", get(job_endpoints::get_queue))
+        .route("/api/v2/jobs/{id}/cancel", post(job_endpoints::cancel_job))
+        .route("/api/v2/jobs/{id}/dispatch/{printer_id}", post(job_endpoints::dispatch_job))
         .route("/v1/printers", post(api::upsert_printer).get(api::list_printers))
         .route("/v1/printers/batch", post(api::batch_upsert_printers))
         .route("/v1/printers/{id}", get(api::get_printer).delete(api::delete_printer))
@@ -42,7 +57,8 @@ async fn main() {
         .route("/v1/printers/{id}/stream/mjpeg", get(api::stream_mjpeg))
         .route("/v1/streams/start", post(api::start_all_streams))
         .route("/v1/streams/stop", post(api::stop_all_streams))
-        .with_state(state);
+        .with_state(state)
+        .into_make_service_with_connect_info::<std::net::SocketAddr>();
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
@@ -53,6 +69,10 @@ async fn main() {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server failed");
+}
+
+async fn serve_admin_console() -> &'static str {
+    include_str!("static/admin.html")
 }
 
 async fn shutdown_signal() {

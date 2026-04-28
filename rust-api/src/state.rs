@@ -1,4 +1,6 @@
+use crate::auth::UserStore;
 use crate::config::Settings;
+use crate::jobs::JobQueue;
 use crate::models::{PrinterModel, PrinterRecord, PrinterStreamConfig};
 use crate::stream::WorkerManager;
 use crate::telemetry::TelemetryManager;
@@ -13,6 +15,8 @@ pub struct AppState {
     pub printers: Arc<RwLock<HashMap<String, PrinterRecord>>>,
     pub workers: Arc<WorkerManager>,
     pub telemetry: Arc<TelemetryManager>,
+    pub users: Arc<UserStore>,
+    pub jobs: Arc<JobQueue>,
 }
 
 impl AppState {
@@ -38,6 +42,8 @@ impl AppState {
             printers: Arc::new(RwLock::new(printers)),
             workers: Arc::new(workers),
             telemetry: Arc::new(TelemetryManager::new()),
+            users: Arc::new(UserStore::new()),
+            jobs: Arc::new(JobQueue::new()), // Initialize the jobs field
         }
     }
 

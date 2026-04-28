@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bambu Farm - Admin Console</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .login-container.hidden {
+            display: none;
+        }
+
+        .admin-console {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .admin-console.hidden {
+            display: none;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .alert.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+
+        .alert.success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+
+        .alert.info {
+            background: #eef;
+            color: #33c;
+            border: 1px solid #ccf;
+        }
+
+        /* Admin Console Styles */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .header h1 {
+            color: white;
+            margin: 0;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            width: auto;
+            font-size: 13px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            background: #f9f9f9;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            border-radius: 0;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            min-height: 400px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .table thead {
+            background: #f9f9f9;
+        }
+
+        .table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.admin {
+            background: #fee;
+            color: #c33;
+        }
+
+        .badge.teacher {
+            background: #efe;
+            color: #3c3;
+        }
+
+        .badge.assistant {
+            background: #eef;
+            color: #33c;
+        }
+
+        .badge.queued {
+            background: #fef0e6;
+            color: #d97706;
+        }
+
+        .badge.in-progress {
+            background: #f0e6ff;
+            color: #9333ea;
+        }
+
+        .badge.completed {
+            background: #e6f3ff;
+            color: #0891b2;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .card h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .card p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="login" class="login-container">
+        <h1>🖨️ Bambu Farm</h1>
+        <p class="subtitle">Admin Console</p>
+        <div id="loginAlert"></div>
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="username" placeholder="Enter username">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="Enter password">
+        </div>
+        <button onclick="login()">Sign In</button>
+    </div>
+
+    <!-- Admin Console -->
+    <div id="console" class="admin-console hidden">
+        <div class="header">
+            <h1>Admin Console</h1>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('users')">Users</button>
+            <button class="tab-btn" onclick="switchTab('jobs')">Print Jobs</button>
+            <button class="tab-btn" onclick="switchTab('queue')">Job Queue</button>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <h2>Dashboard</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>Total Users</h3>
+                    <p id="totalUsers" style="font-size: 24px; font-weight: bold; color: #667eea;">--</p>
+                </div>
+                <div class="card">
+                    <h3>Total Print Jobs</h3>
+                    <p id="totalJobs" style="font-size: 24px; font-weight: bold; color: #764ba2;">--</p>
+                </div>
+                <div class="card">
+                    <h3>Queued Jobs</h3>
+                    <p id="queuedJobs" style="font-size: 24px; font-weight: bold; color: #d97706;">--</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Tab -->
+        <div id="users" class="tab-content">
+            <h2>Manage Users</h2>
+            <div style="margin-bottom: 20px;">
+                <h3>Create New User</h3>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="newUsername" placeholder="Username">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="newEmail" placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="newPassword" placeholder="Password (min 10 chars)">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select id="newRole">
+                        <option value="admin">Admin</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="assistant">Assistant</option>
+                    </select>
+                </div>
+                <button onclick="createUser()">Create User</button>
+            </div>
+            <div id="usersList"></div>
+        </div>
+
+        <!-- Print Jobs Tab -->
+        <div id="jobs" class="tab-content">
+            <h2>All Print Jobs</h2>
+            <div id="jobsList"></div>
+        </div>
+
+        <!-- Job Queue Tab -->
+        <div id="queue" class="tab-content">
+            <h2>Pending Print Queue</h2>
+            <div id="queueList"></div>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('token');
+        const API_BASE = '';
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const alertDiv = document.getElementById('loginAlert');
+
+            if (!username || !password) {
+                alertDiv.innerHTML = '<div class="alert error">Please enter username and password</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    token = data.token;
+                    localStorage.setItem('token', token);
+                    showConsole();
+                    loadDashboard();
+                } else {
+                    alertDiv.innerHTML = `<div class="alert error">${data.error}</div>`;
+                }
+            } catch (e) {
+                alertDiv.innerHTML = `<div class="alert error">Connection error</div>`;
+            }
+        }
+
+        async function logout() {
+            localStorage.removeItem('token');
+            token = null;
+            document.getElementById('login').classList.remove('hidden');
+            document.getElementById('console').classList.add('hidden');
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+
+        function showConsole() {
+            document.getElementById('login').classList.add('hidden');
+            document.getElementById('console').classList.remove('hidden');
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function loadDashboard() {
+            try {
+                const [users, jobs, queue] = await Promise.all([
+                    fetch(`${API_BASE}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_BASE}/api/v2/jobs`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_BASE}/api/v2/jobs/queue`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+
+                const usersData = await users.json();
+                const jobsData = await jobs.json();
+                const queueData = await queue.json();
+
+                document.getElementById('totalUsers').textContent = usersData.users ? usersData.users.length : '0';
+                document.getElementById('totalJobs').textContent = Array.isArray(jobsData) ? jobsData.length : '0';
+                document.getElementById('queuedJobs').textContent = Array.isArray(queueData) ? queueData.length : '0';
+            } catch (e) {
+                console.error('Dashboard load error:', e);
+            }
+        }
+
+        async function createUser() {
+            const username = document.getElementById('newUsername').value;
+            const email = document.getElementById('newEmail').value;
+            const password = document.getElementById('newPassword').value;
+            const role = document.getElementById('newRole').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ username, email, password, role })
+                });
+
+                if (response.ok) {
+                    alert('User created successfully');
+                    document.getElementById('newUsername').value = '';
+                    document.getElementById('newEmail').value = '';
+                    document.getElementById('newPassword').value = '';
+                    loadUsers();
+                } else {
+                    const data = await response.json();
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (e) {
+                alert('Connection error');
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.users) {
+                    const html = `<table class="table"><thead><tr><th>Username</th><th>Email</th><th>Role</th></tr></thead><tbody>${
+                        data.users.map(u => `<tr><td>${u.username}</td><td>${u.email || '-'}</td><td><span class="badge ${u.role}">${u.role}</span></td></tr>`).join('')
+                    }</tbody></table>`;
+                    document.getElementById('usersList').innerHTML = html;
+                }
+            } catch (e) {
+                console.error('Load users error:', e);
+            }
+        }
+
+        if (token) {
+            showConsole();
+            loadDashboard();
+        }
+    </script>
+</body>
+</html>
