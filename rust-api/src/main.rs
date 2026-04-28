@@ -9,6 +9,8 @@ mod state;
 mod stream;
 mod telemetry;
 
+use axum::http::header;
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use state::AppState;
@@ -71,8 +73,12 @@ async fn main() {
         .expect("server failed");
 }
 
-async fn serve_admin_console() -> &'static str {
-    include_str!("static/admin.html")
+async fn serve_admin_console() -> impl IntoResponse {
+    let html = include_str!("static/admin.html");
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
 }
 
 async fn shutdown_signal() {

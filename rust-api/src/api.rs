@@ -71,6 +71,15 @@ async fn build_summary_response(state: &AppState, printer: &PrinterRecord) -> Pr
         None
     };
 
+    let current_job = state.jobs.job_for_printer(&printer.id).await.map(|j| crate::models::PrinterJobInfo {
+        job_id: j.id,
+        student_name: j.student_name,
+        class_period: j.class_period,
+        filename: j.filename,
+        status: format!("{:?}", j.status).to_lowercase(),
+        progress_percent: j.progress_percent,
+    });
+
     PrinterSummaryResponse {
         id: printer.id.clone(),
         host: printer.host.clone(),
@@ -82,6 +91,7 @@ async fn build_summary_response(state: &AppState, printer: &PrinterRecord) -> Pr
         stream_url,
         telemetry: telemetry_snapshot(state, &printer.id).await,
         stream_auto_managed: stream_auto_managed(state, &printer.id).await,
+        current_job,
     }
 }
 

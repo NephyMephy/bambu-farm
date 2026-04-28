@@ -203,6 +203,14 @@ impl JobQueue {
         Ok(job.clone())
     }
 
+    /// Find the in-progress job assigned to a specific printer
+    pub async fn job_for_printer(&self, printer_id: &str) -> Option<PrintJob> {
+        let jobs = self.jobs.read().await;
+        jobs.values()
+            .find(|j| j.printer_id.as_deref() == Some(printer_id) && j.status == JobStatus::InProgress)
+            .cloned()
+    }
+
     /// Cancel a job
     pub async fn cancel_job(&self, job_id: &str) -> Result<PrintJob, String> {
         let mut jobs = self.jobs.write().await;

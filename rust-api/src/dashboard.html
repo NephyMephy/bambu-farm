@@ -362,6 +362,36 @@
     font-size: 13px;
   }
 
+  .task-info {
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(125, 211, 252, 0.06);
+    border: 1px solid rgba(125, 211, 252, 0.12);
+    display: grid;
+    gap: 6px;
+  }
+
+  .task-info-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  .task-info-label {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    min-width: 60px;
+  }
+
+  .task-info-value {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+  }
+
   .progress-wrap {
     display: grid;
     gap: 8px;
@@ -624,6 +654,9 @@ function statusSummary(printer) {
   const updated = telemetry.updated_at ? new Date(telemetry.updated_at) : null;
   const ageMinutes = updated ? Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000)) : null;
 
+  // Job queue info (student name + class period)
+  const job = printer.current_job || null;
+
   return {
     streamState,
     streamLabel,
@@ -632,6 +665,7 @@ function statusSummary(printer) {
     progress,
     isPrinting,
     ageMinutes,
+    job,
   };
 }
 
@@ -661,6 +695,20 @@ function renderCard(printer) {
   const ageText = summary.ageMinutes === null ? 'Updated just now' : `Updated ${summary.ageMinutes}m ago`;
   const autoLabel = printer.stream_auto_managed ? 'Auto-managed' : 'Manual';
 
+  // Print status badge styling
+  const printStatusBadge = summary.isPrinting ? 'accent' : (summary.taskState === 'FINISH' ? 'ok' : 'neutral');
+  const printStatusLabel = summary.isPrinting ? 'Printing' : (summary.taskState === 'FINISH' ? 'Finished' : summary.taskState);
+
+  // Task info from job queue
+  const job = summary.job;
+  const taskInfoHtml = job
+    ? `<div class="task-info">
+         <div class="task-info-row"><span class="task-info-label">Student</span><span class="task-info-value">${esc(job.student_name)}</span></div>
+         <div class="task-info-row"><span class="task-info-label">Period</span><span class="task-info-value">${esc(job.class_period)}</span></div>
+         <div class="task-info-row"><span class="task-info-label">File</span><span class="task-info-value">${esc(job.filename)}</span></div>
+       </div>`
+    : '';
+
   return `
     <article class="card" id="card-${esc(printer.id)}">
       <div class="card-head">
@@ -669,9 +717,9 @@ function renderCard(printer) {
           <div class="printer-meta">${esc(printer.host)}<br>${esc(modelLabel(printer.model))} · ${esc(printer.stream_type || 'rtsp')} · ${esc(printer.device_id || '')}</div>
         </div>
         <div class="badges">
+          <span class="badge ${printStatusBadge}">${esc(printStatusLabel)}</span>
           <span class="badge ${streamBadgeClass(summary.streamState)}">${esc(summary.streamLabel)}</span>
           <span class="badge ${printer.stream_auto_managed ? 'accent' : 'neutral'}">${esc(autoLabel)}</span>
-          <span class="badge neutral">${esc(summary.taskState)}</span>
         </div>
       </div>
 
@@ -687,6 +735,8 @@ function renderCard(printer) {
           </div>
           <div class="badge ${summary.isPrinting ? 'accent' : 'neutral'}">${esc(formatPercent(telemetry.progress))}</div>
         </div>
+
+        ${taskInfoHtml}
 
         <div class="progress-wrap">
           <div class="progress-labels">
@@ -790,6 +840,12 @@ function render() {
       p.telemetry?.bed_temper ?? '',
       p.telemetry?.bed_target_temper ?? '',
       p.telemetry?.chamber_temper ?? '',
+      p.current_job?.job_id || '',
+      p.current_job?.student_name || '',
+      p.current_job?.class_period || '',
+      p.current_job?.filename || '',
+      p.current_job?.status || '',
+      p.current_job?.progress_percent ?? '',
     ].join('|'))
     .sort()
     .join('||');

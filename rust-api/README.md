@@ -240,10 +240,14 @@ http://127.0.0.1:8080/v1/printers/my-p1s/stream/mjpeg
 
 Open `http://127.0.0.1:8080/` in your browser to see the live dashboard. It shows all registered printers in a grid with:
 
-- Printer ID and host IP labels
+- **Print status** badge per printer (Printing / Finished / Idle) — color-coded
+- **Task** name from printer telemetry
+- **Task info** panel showing student name, class period, and filename (when a job is dispatched from the queue)
 - Live stream state badges (running / starting / stopped / error)
 - Embedded WebRTC stream iframes for running printers
-- Per-printer Start / Stop buttons
+- Progress bar with percentage
+- Temperature, layer, and remaining time metrics
+- Per-printer Start / Stop stream buttons
 - **Start All** / **Stop All** buttons in the header
 - Auto-refreshes every 10 seconds
 
@@ -467,6 +471,18 @@ Invoke-RestMethod -Uri http://127.0.0.1:8080/v1/printers/printer-1 -Method Delet
 | GET | `/v1/printers/{id}/stream/mjpeg` | MJPEG stream (proprietary models only) |
 | POST | `/v1/streams/start` | Start streams for all printers |
 | POST | `/v1/streams/stop` | Stop streams for all printers |
+| POST | `/auth/login` | Login and get session token |
+| POST | `/auth/logout` | Logout and revoke session |
+| GET | `/auth/me` | Get current user profile |
+| POST | `/admin/users` | Create new user (admin only) |
+| GET | `/admin/users` | List all users (admin only) |
+| POST | `/api/v2/jobs/submit` | Submit new print job (public) |
+| GET | `/api/v2/jobs/{id}` | Get job status (public) |
+| GET | `/api/v2/jobs` | List all jobs (staff only) |
+| GET | `/api/v2/jobs/queue` | List queued jobs (staff only) |
+| POST | `/api/v2/jobs/{id}/cancel` | Cancel queued job (staff only) |
+| POST | `/api/v2/jobs/{id}/dispatch/{printer_id}` | Dispatch job to printer (staff only) |
+| GET | `/admin` | Admin console (user/job management) |
 
 ### Batch Upsert
 

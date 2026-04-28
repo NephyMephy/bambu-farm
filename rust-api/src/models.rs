@@ -222,6 +222,17 @@ pub struct BatchUpsertError {
     pub error: String,
 }
 
+/// Lightweight job info included in printer summary responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrinterJobInfo {
+    pub job_id: String,
+    pub student_name: String,
+    pub class_period: String,
+    pub filename: String,
+    pub status: String,
+    pub progress_percent: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterSummaryResponse {
     pub id: String,
@@ -234,6 +245,8 @@ pub struct PrinterSummaryResponse {
     pub stream_url: Option<String>,
     pub telemetry: Option<PrinterTelemetrySnapshot>,
     pub stream_auto_managed: bool,
+    /// The dispatched job currently assigned to this printer, if any.
+    pub current_job: Option<PrinterJobInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

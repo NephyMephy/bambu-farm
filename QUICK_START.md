@@ -95,6 +95,10 @@ curl -X POST http://localhost:8080/api/v2/jobs/$JOB_ID/dispatch/$PRINTER_ID \
   -H "Authorization: Bearer $TEACHER_TOKEN"
 
 # Response shows job status changed to "in_progress"
+# The printer card on the dashboard now shows:
+#   - Print status: Printing
+#   - Task: (from printer telemetry)
+#   - Task Info: Student name, class period, filename
 ```
 
 ### 6. Check Job Status (Public - Anyone)
@@ -112,6 +116,16 @@ Features:
 - Create new users
 - View all jobs and queue
 - Dashboard with metrics
+
+### 8. View Printer Dashboard
+Open browser: **http://localhost:8080/**
+
+Each printer card shows:
+- **Print status** badge (Printing / Finished / Idle)
+- **Task** name from printer telemetry
+- **Task info** panel with student name, class period, and filename (when a job is dispatched)
+- Progress bar, temperatures, layers, remaining time
+- Live stream preview
 
 ## Available Roles
 
@@ -169,6 +183,7 @@ Features:
 2. GET `/api/v2/jobs/queue` to see pending jobs
 3. POST `/api/v2/jobs/{id}/dispatch/{printer_id}` to start print
 4. Monitor job status via GET `/api/v2/jobs/{id}`
+5. View printer dashboard — card shows student name, period, and filename under Task Info
 
 ### Pattern 3: Admin Creates Accounts
 1. Admin logs in, gets token
@@ -233,6 +248,22 @@ Access at: **http://localhost:8080/admin**
 - See pending jobs in order
 - Cancel queued jobs
 - Dispatch jobs to printers
+
+## Printer Dashboard
+
+Access at: **http://localhost:8080/**
+
+Each printer card displays:
+
+| Section | Content |
+|---------|--------|
+| Print Status | Color-coded badge: Printing (blue), Finished (green), Idle (gray) |
+| Task | Current task name from printer telemetry |
+| Task Info | Student name, class period, filename (from job queue) |
+| Progress | Bar with percentage |
+| Metrics | Remaining time, layers, stream status |
+| Temps | Nozzle, bed, chamber |
+| Preview | Live camera stream or snapshot |
 
 ## Performance Notes
 
