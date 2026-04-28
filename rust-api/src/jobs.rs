@@ -46,6 +46,7 @@ pub struct PrintJob {
     pub id: String,
     pub student_name: String,
     pub class_period: String,
+    pub teacher: String,
     pub filename: String,
     pub printer_model: PrinterModel,
     pub printer_id: Option<String>,
@@ -75,6 +76,7 @@ impl JobQueue {
         &self,
         student_name: String,
         class_period: String,
+        teacher: String,
         filename: String,
         printer_model: PrinterModel,
         file_path: String,
@@ -94,10 +96,16 @@ impl JobQueue {
             return Err("Class period must be 1-50 characters".to_string());
         }
 
+        // Validate teacher
+        if teacher.is_empty() || teacher.len() > 100 {
+            return Err("Teacher must be 1-100 characters".to_string());
+        }
+
         let job = PrintJob {
             id: uuid_simple(),
             student_name,
             class_period,
+            teacher,
             filename,
             printer_model,
             printer_id: None,
@@ -239,7 +247,7 @@ impl JobQueue {
 }
 
 /// Generate simple UUID
-fn uuid_simple() -> String {
+pub fn uuid_simple() -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use std::time::SystemTime;

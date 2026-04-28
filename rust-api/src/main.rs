@@ -2,6 +2,7 @@ mod api;
 mod auth;
 mod config;
 mod endpoints;
+mod gcode_validate;
 mod job_endpoints;
 mod jobs;
 mod models;
@@ -39,6 +40,7 @@ async fn main() {
         .route("/health", get(api::health))
         .route("/", get(api::dashboard))
         .route("/admin", get(serve_admin_console))
+        .route("/submit", get(serve_submit_form))
         .route("/auth/login", post(endpoints::login))
         .route("/auth/logout", post(endpoints::logout))
         .route("/auth/me", get(endpoints::get_current_user))
@@ -46,6 +48,7 @@ async fn main() {
         .route("/admin/users/{id}", put(endpoints::update_user).delete(endpoints::delete_user))
         .route("/admin/users/{id}/password", put(endpoints::change_password))
         .route("/api/v2/jobs/submit", post(job_endpoints::submit_job))
+        .route("/api/v2/jobs/upload", post(job_endpoints::upload_job))
         .route("/api/v2/jobs", get(job_endpoints::list_jobs))
         .route("/api/v2/jobs/{id}", get(job_endpoints::get_job))
         .route("/api/v2/jobs/queue", get(job_endpoints::get_queue))
@@ -77,6 +80,14 @@ async fn main() {
 
 async fn serve_admin_console() -> impl IntoResponse {
     let html = include_str!("static/admin.html");
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
+}
+
+async fn serve_submit_form() -> impl IntoResponse {
+    let html = include_str!("static/submit.html");
     (
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html,

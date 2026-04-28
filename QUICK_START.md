@@ -128,13 +128,20 @@ Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
   }'
 ```
 
-### 4. Submit Print Job (Public - No Auth Required)
+### 4. Submit Print Job
+
+**Web Form (Recommended):** Open browser → **http://localhost:8080/submit**
+
+The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the sliced .gcode/.3mf file. It automatically validates the gcode against the selected printer model and rejects incompatible files.
+
+**API (JSON):**
 ```bash
 curl -X POST http://localhost:8080/api/v2/jobs/submit \
   -H "Content-Type: application/json" \
   -d '{
     "student_name": "Alice Johnson",
     "class_period": "Period 2",
+    "teacher": "Johnson",
     "filename": "bracket_assembly.3mf",
     "printer_model": "A1"
   }'
@@ -159,12 +166,36 @@ $job = Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/submit" `
   -Body '{
     "student_name": "Alice Johnson",
     "class_period": "Period 2",
+    "teacher": "Johnson",
     "filename": "bracket_assembly.3mf",
     "printer_model": "A1"
   }'
 
 # Response is auto-parsed; save the job ID:
 $JOB_ID = $job.id
+```
+
+**API (File Upload with Gcode Validation):**
+```bash
+curl -X POST http://localhost:8080/api/v2/jobs/upload \
+  -F "name=Alice Johnson" \
+  -F "class_period=Period 2" \
+  -F "teacher=Johnson" \
+  -F "printer_model=A1" \
+  -F "file=@bracket_assembly.3mf"
+```
+
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/upload" `
+  -Method POST `
+  -Form @{
+    name = "Alice Johnson"
+    class_period = "Period 2"
+    teacher = "Johnson"
+    printer_model = "A1"
+    file = Get-Item -Path "bracket_assembly.3mf"
+  }
 ```
 
 ### 5. View Job Queue (Teacher Auth Required)
@@ -278,7 +309,8 @@ Each printer card shows:
 ### Job Submission & Management
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/v2/jobs/submit` | None | Submit new job (public) |
+| POST | `/api/v2/jobs/submit` | None | Submit job via JSON (public) |
+| POST | `/api/v2/jobs/upload` | None | Submit job with file upload + gcode validation (public) |
 | GET | `/api/v2/jobs/{id}` | None | Get job status (public) |
 | GET | `/api/v2/jobs` | Bearer | List all jobs (staff) |
 | GET | `/api/v2/jobs/queue` | Bearer | List queued jobs (staff) |
