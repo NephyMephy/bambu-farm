@@ -19,6 +19,20 @@ cargo run --bin bambu-live-api
 # Server starts on http://0.0.0.0:8080
 ```
 
+---
+
+### Build (PowerShell)
+```powershell
+cd rust-api
+cargo build --release
+```
+
+### Run (PowerShell)
+```powershell
+cargo run --bin bambu-live-api
+# Server starts on http://0.0.0.0:8080
+```
+
 ## Quick Test Sequence
 
 ### 1. Login as Admin
@@ -41,12 +55,38 @@ curl -X POST http://localhost:8080/auth/login \
 TOKEN="def456..."
 ```
 
+```powershell
+# PowerShell
+$response = Invoke-RestMethod -Uri "http://localhost:8080/auth/login" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body '{"username":"admin","password":"AdminPass123"}'
+
+# Response is auto-parsed; save the token:
+$TOKEN = $response.token
+```
+
 ### 2. Create Teacher Account
 ```bash
 curl -X POST http://localhost:8080/admin/users \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
+    "username": "teacher1",
+    "email": "teacher@school.edu",
+    "password": "TeacherPass123",
+    "role": "teacher"
+  }'
+```
+
+```powershell
+# PowerShell
+$headers = @{ "Authorization" = "Bearer $TOKEN" }
+Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Headers $headers `
+  -Body '{
     "username": "teacher1",
     "email": "teacher@school.edu",
     "password": "TeacherPass123",
@@ -77,6 +117,22 @@ curl -X POST http://localhost:8080/api/v2/jobs/submit \
 JOB_ID="job123..."
 ```
 
+```powershell
+# PowerShell
+$job = Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/submit" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body '{
+    "student_name": "Alice Johnson",
+    "class_period": "Period 2",
+    "filename": "bracket_assembly.3mf",
+    "printer_model": "A1"
+  }'
+
+# Response is auto-parsed; save the job ID:
+$JOB_ID = $job.id
+```
+
 ### 4. View Job Queue (Teacher Auth Required)
 ```bash
 TEACHER_TOKEN="teacher_token_from_step2"
@@ -85,6 +141,13 @@ curl http://localhost:8080/api/v2/jobs/queue \
   -H "Authorization: Bearer $TEACHER_TOKEN"
 
 # Returns list of queued jobs in order
+```
+
+```powershell
+# PowerShell
+$TEACHER_TOKEN = "teacher_token_from_step2"
+$headers = @{ "Authorization" = "Bearer $TEACHER_TOKEN" }
+Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/queue" -Headers $headers
 ```
 
 ### 5. Dispatch Job to Printer (Teacher Auth Required)
@@ -101,11 +164,25 @@ curl -X POST http://localhost:8080/api/v2/jobs/$JOB_ID/dispatch/$PRINTER_ID \
 #   - Task Info: Student name, class period, filename
 ```
 
+```powershell
+# PowerShell
+$PRINTER_ID = "printer_01"
+$headers = @{ "Authorization" = "Bearer $TEACHER_TOKEN" }
+Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/$JOB_ID/dispatch/$PRINTER_ID" `
+  -Method POST `
+  -Headers $headers
+```
+
 ### 6. Check Job Status (Public - Anyone)
 ```bash
 curl http://localhost:8080/api/v2/jobs/$JOB_ID
 
 # Response shows current job status, progress, printer assignment
+```
+
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/$JOB_ID"
 ```
 
 ### 7. Access Admin Console
@@ -227,6 +304,13 @@ Set environment variables before running:
 export BIND_ADDR=0.0.0.0:8080          # Default listen address
 export RUST_LOG=info                   # Log level (debug, info, warn, error)
 export MAX_CONCURRENT_STREAMS=20       # Printer stream limit
+```
+
+```powershell
+# PowerShell
+$env:BIND_ADDR = "0.0.0.0:8080"          # Default listen address
+$env:RUST_LOG = "info"                   # Log level (debug, info, warn, error)
+$env:MAX_CONCURRENT_STREAMS = "20"       # Printer stream limit
 ```
 
 ## Admin Console
