@@ -15,8 +15,8 @@ use tracing::{debug, error, info, warn};
 const MQTT_KEEP_ALIVE_SECS: u64 = 30;
 const MQTT_RECONNECT_DELAY_SECS: u64 = 5;
 const MQTT_FULL_STATUS_INTERVAL_SECS: u64 = 300; // 5 min — avoid lagging P1 series
-const MQTT_CONNECTION_TIMEOUT_SECS: u64 = 10;
 const MQTT_CLEAN_SESSION: bool = true;
+const MQTT_MAX_RECONNECT_DELAY_SECS: u64 = 60;
 
 /// Global sequence ID counter for MQTT requests
 static SEQUENCE_ID: AtomicU64 = AtomicU64::new(1);
@@ -290,6 +290,7 @@ async fn run_printer_telemetry(
     mut cancel_rx: watch::Receiver<bool>,
 ) {
     let report_topic = report_topic(&printer);
+    let mut reconnect_delay = MQTT_RECONNECT_DELAY_SECS;
 
     loop {
         if *cancel_rx.borrow() {
@@ -300,9 +301,15 @@ async fn run_printer_telemetry(
         let options = build_mqtt_options(&printer);
         let (client, mut eventloop) = AsyncClient::new(options, 10);
 
-        // Wait for ConnAck before subscribing — rumqttc requires connection first
+        // Increase rumqttc's internal connection timeout (default 5s is too short for
+        // TLS handshake to a Bambu printer over WiFi)
+        eventloop.set_network_options({
+            let mut net_opts = rumqttc::NetworkOptions::new();
+            net_opts.set_connection_timeout(15);
+            net_opts
+        });
+
         let mut connected = false;
-        let mut subscribe_requested = false;
         let mut pushall_requested = false;
 
         info!(printer = %printer.id, host = %printer.host, "connecting to MQTT...");
@@ -311,9 +318,6 @@ async fn run_printer_telemetry(
         let mut refresh = tokio::time::interval(Duration::from_secs(refresh_secs));
         refresh.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        // Connection timeout
-        let mut connect_timeout = tokio::time::interval(Duration::from_secs(MQTT_CONNECTION_TIMEOUT_SECS));
-
         loop {
             tokio::select! {
                 _ = cancel_rx.changed() => {
@@ -321,7 +325,7 @@ async fn run_printer_telemetry(
                     return;
                 }
                 _ = refresh.tick() => {
-                    if connected {
+                    if connected && pushall_requested {
                         if let Err(e) = publish_full_status(&client, &printer).await {
                             warn!(printer = %printer.id, "failed to refresh telemetry: {e}");
                         } else {
@@ -329,31 +333,26 @@ async fn run_printer_telemetry(
                         }
                     }
                 }
-                _ = connect_timeout.tick() => {
-                    if !connected {
-                        warn!(printer = %printer.id, "MQTT connection timeout, reconnecting...");
-                        break;
-                    }
-                }
                 event = eventloop.poll() => {
                     match event {
                         Ok(Event::Incoming(Incoming::ConnAck(ack))) => {
                             if ack.code == rumqttc::ConnectReturnCode::Success {
-                                info!(printer = %printer.id, "MQTT connected, subscribing...");
+                                info!(printer = %printer.id, "MQTT connected, subscribing to {}...", report_topic);
                                 connected = true;
+                                // Reset reconnect delay on successful connection
+                                reconnect_delay = MQTT_RECONNECT_DELAY_SECS;
                                 // Subscribe after successful connection
                                 if let Err(e) = client.subscribe(report_topic.clone(), QoS::AtLeastOnce).await {
                                     error!(printer = %printer.id, "failed to subscribe: {e}");
                                     break;
                                 }
-                                subscribe_requested = true;
                             } else {
                                 error!(printer = %printer.id, "MQTT connection refused: {:?}", ack.code);
                                 break;
                             }
                         }
                         Ok(Event::Incoming(Incoming::SubAck(_))) => {
-                            if subscribe_requested && !pushall_requested {
+                            if !pushall_requested {
                                 // Request initial full status after subscription confirmed
                                 if let Err(e) = publish_full_status(&client, &printer).await {
                                     warn!(printer = %printer.id, "failed to request initial pushall: {e}");
@@ -411,10 +410,22 @@ async fn run_printer_telemetry(
                             // Acknowledgments — normal, ignore
                         }
                         Ok(_) => {
-                            // Other incoming events (SubAck handled above, etc.)
+                            // Other events — ignore
                         }
                         Err(e) => {
-                            warn!(printer = %printer.id, "MQTT connection error: {e}");
+                            // rumqttc returns NetworkTimeout if the initial TCP/TLS connection
+                            // takes too long, or FlushTimeout if a write times out.
+                            // These are often transient — log and reconnect.
+                            let err_str = format!("{e}");
+                            if err_str.contains("NetworkTimeout") || err_str.contains("FlushTimeout") {
+                                warn!(printer = %printer.id, "MQTT network timeout (printer may be offline/slow): {e}");
+                            } else if err_str.contains("Connection refused") {
+                                error!(printer = %printer.id, "MQTT auth failed (wrong username/access code?): {e}");
+                            } else if err_str.contains("I/O") || err_str.contains("TLS") {
+                                warn!(printer = %printer.id, "MQTT connection lost: {e}");
+                            } else {
+                                warn!(printer = %printer.id, "MQTT error: {e}");
+                            }
                             break;
                         }
                     }
@@ -422,7 +433,16 @@ async fn run_printer_telemetry(
             }
         }
 
-        warn!(printer = %printer.id, "MQTT disconnected, waiting {}s before reconnect...", MQTT_RECONNECT_DELAY_SECS);        wait_before_reconnect(&mut cancel_rx).await;
+        // Exponential backoff on reconnect (cap at MQTT_MAX_RECONNECT_DELAY_SECS)
+        warn!(printer = %printer.id, "MQTT disconnected, waiting {}s before reconnect...", reconnect_delay);
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(reconnect_delay)) => {
+                reconnect_delay = (reconnect_delay * 2).min(MQTT_MAX_RECONNECT_DELAY_SECS);
+            }
+            _ = cancel_rx.changed() => {
+                return;
+            }
+        }
     }
 }
 
@@ -432,13 +452,6 @@ impl TelemetryManager {
             .write()
             .await
             .insert(printer_id.to_string(), true);
-    }
-}
-
-async fn wait_before_reconnect(cancel_rx: &mut watch::Receiver<bool>) {
-    tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(MQTT_RECONNECT_DELAY_SECS)) => {}
-        _ = cancel_rx.changed() => {}
     }
 }
 
