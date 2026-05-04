@@ -35,6 +35,8 @@ impl PrinterModel {
 pub enum JobStatus {
     Queued,
     InProgress,
+    Printing,
+    Collect,
     Completed,
     Cancelled,
     Error,
@@ -286,6 +288,86 @@ impl JobQueue {
 
         let jobs = self.jobs.read().await;
         Ok(jobs.get(job_id).unwrap().clone())
+    }
+
+    /// Set job status (admin-controlled status updates)
+    pub async fn set_job_status(&self, job_id: &str, new_status: JobStatus) -> Result<PrintJob, String> {
+        let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| "Job not found".to_string())?;
+
+        // Handle Collect → Complete auto-transition
+        let final_status = if new_status == JobStatus::Collect && job.status != JobStatus::Collect {
+            // Mark as Collect (waiting for collection), but doesn't auto-complete yet
+            JobStatus::Collect
+        } else if new_status == JobStatus::Completed && job.status == JobStatus::Collect {
+            // Already Collect, now completing
+            job.completed_at = Some(Utc::now());
+            JobStatus::Completed
+        } else {
+            new_status
+        };
+
+        job.status = final_status.clone();
+        job.updated_at = Utc::now();
+
+        // If marking as Completed, remove from queue order
+        if final_status == JobStatus::Completed {
+            let jid = job_id.to_string();
+            drop(jobs);
+            let mut order = self.job_order.write().await;
+            order.retain(|id| id != &jid);
+            let jobs = self.jobs.read().await;
+            Ok(jobs.get(job_id).unwrap().clone())
+        } else {
+            Ok(job.clone())
+        }
+    }
+
+    /// Set printer for a job (for Printing status)
+    pub async fn set_job_printer(&self, job_id: &str, printer_id: String) -> Result<PrintJob, String> {
+        let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| "Job not found".to_string())?;
+
+        job.printer_id = Some(printer_id);
+        job.updated_at = Utc::now();
+
+        Ok(job.clone())
+    }
+
+    /// Clear (delete) all jobs with a specific status
+    pub async fn clear_jobs_by_status(&self, status: JobStatus) -> Result<Vec<PrintJob>, String> {
+        let mut jobs = self.jobs.write().await;
+        let to_delete: Vec<String> = jobs
+            .iter()
+            .filter(|(_, j)| j.status == status)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let mut deleted_jobs = Vec::new();
+        for job_id in to_delete {
+            if let Some(job) = jobs.remove(&job_id) {
+                deleted_jobs.push(job);
+            }
+        }
+
+        // Remove from queue order
+        drop(jobs);
+        let mut order = self.job_order.write().await;
+        order.retain(|id| {
+            let jobs = futures::executor::block_on(self.jobs.read());
+            jobs.contains_key(id)
+        });
+
+        Ok(deleted_jobs)
+    }
+
+    /// Clear all completed jobs
+    pub async fn clear_completed_jobs(&self) -> Result<Vec<PrintJob>, String> {
+        self.clear_jobs_by_status(JobStatus::Completed).await
     }
 }
 

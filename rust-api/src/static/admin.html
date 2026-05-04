@@ -347,6 +347,8 @@
             <div class="stats-bar">
                 <div class="stat-item">Queued: <strong id="statQueued">0</strong></div>
                 <div class="stat-item">In Progress: <strong id="statInProgress">0</strong></div>
+                <div class="stat-item">Printing: <strong id="statPrinting">0</strong></div>
+                <div class="stat-item">Collect: <strong id="statCollect">0</strong></div>
                 <div class="stat-item">Completed: <strong id="statCompleted">0</strong></div>
             </div>
 
@@ -356,6 +358,8 @@
                     <option value="all">All</option>
                     <option value="queued">Queued</option>
                     <option value="inprogress">In Progress</option>
+                    <option value="printing">Printing</option>
+                    <option value="collect">Collect</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                     <option value="error">Error</option>
@@ -472,6 +476,8 @@
         function updateStats(jobs) {
             document.getElementById('statQueued').textContent = jobs.filter(j => j.status === 'queued').length;
             document.getElementById('statInProgress').textContent = jobs.filter(j => j.status === 'inprogress').length;
+            document.getElementById('statPrinting').textContent = jobs.filter(j => j.status === 'printing').length;
+            document.getElementById('statCollect').textContent = jobs.filter(j => j.status === 'collect').length;
             document.getElementById('statCompleted').textContent = jobs.filter(j => j.status === 'completed').length;
         }
 
@@ -514,12 +520,26 @@
                 <th>Job ID</th>
                 <th>File Location</th>
                 <th>Status</th>
+                <th>Printer</th>
                 <th>Actions</th>
             </tr></thead><tbody>${filtered.map(job => {
                 const created = new Date(job.created_at);
                 const completed = job.completed_at ? new Date(job.completed_at) : null;
-                const canComplete = job.status === 'queued' || job.status === 'inprogress';
-                const canDelete = job.status === 'completed';
+                
+                // Build status dropdown
+                const statusOptions = ['queued', 'inprogress', 'printing', 'collect', 'completed', 'cancelled', 'error'];
+                const statusDropdown = statusOptions.map(s => 
+                    `<option value="${s}" ${job.status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+                ).join('');
+
+                // Printer control - show only for 'printing' status
+                const printerControl = job.status === 'printing' ? 
+                    `<input type="text" id="printer-${esc(job.id)}" value="${esc(job.printer_id || '')}" placeholder="Printer ID" style="padding:4px;width:100px;font-size:12px;" />` : 
+                    `<span style="font-size:12px;">${esc(job.printer_id || '—')}</span>`;
+
+                // Auto-complete button for 'collect' status
+                const autoCompleteBtn = job.status === 'collect' ? 
+                    `<button class="action-btn complete" onclick="setJobStatus('${esc(job.id)}', 'completed')" style="font-size:11px;">Auto-Complete</button>` : '';
 
                 return `<tr>
                     <td class="datetime">${created.toLocaleDateString()} ${created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${completed ? `<br><span style="color:#0891b2;font-size:11px">Completed: ${completed.toLocaleString()}</span>` : ''}</td>
@@ -528,15 +548,80 @@
                     <td>${esc(job.teacher)}</td>
                     <td class="job-id">${esc(job.id)}</td>
                     <td class="file-path" title="${esc(job.file_path)}">${esc(job.file_path)}</td>
-                    <td><span class="badge ${esc(job.status)}">${esc(job.status)}</span></td>
                     <td>
-                        ${canComplete ? `<button class="action-btn complete" onclick="completeJob('${esc(job.id)}')">Mark Complete</button>` : ''}
-                        ${canDelete ? `<button class="action-btn delete" onclick="deleteJob('${esc(job.id)}')">Delete</button>` : ''}
+                        <select onchange="setJobStatus('${esc(job.id)}', this.value)" style="padding:4px;font-size:12px;">
+                            ${statusDropdown}
+                        </select>
+                    </td>
+                    <td>${printerControl}</td>
+                    <td>
+                        ${job.status === 'printing' ? `<button class="action-btn" onclick="setPrinterAndStatus('${esc(job.id)}')" style="font-size:11px;">Set Printer</button>` : ''}
+                        ${autoCompleteBtn}
+                        <button class="action-btn delete" onclick="deleteJob('${esc(job.id)}')" style="font-size:11px;">Delete</button>
                     </td>
                 </tr>`;
             }).join('')}</tbody></table>`;
 
             document.getElementById('jobsList').innerHTML = html;
+        }
+
+        async function setJobStatus(jobId, newStatus) {
+            console.log('[SET_JOB_STATUS] Setting job', jobId, 'status to', newStatus);
+            try {
+                const response = await fetch(`${API_BASE}/api/v2/jobs/${jobId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ status: newStatus }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('[SET_JOB_STATUS] ✓ Job status updated');
+                    loadJobs();
+                } else {
+                    console.log('[SET_JOB_STATUS] ✗ Failed:', response.status);
+                    alert('Failed to update job status');
+                }
+            } catch (err) {
+                console.error('[SET_JOB_STATUS] Error:', err);
+                alert('Error updating job status: ' + err.message);
+            }
+        }
+
+        async function setPrinterAndStatus(jobId) {
+            const printerInput = document.getElementById(`printer-${jobId}`);
+            const printerId = printerInput?.value?.trim();
+            
+            if (!printerId) {
+                alert('Please enter a printer ID');
+                return;
+            }
+
+            console.log('[SET_PRINTER] Setting job', jobId, 'printer to', printerId);
+            try {
+                const response = await fetch(`${API_BASE}/api/v2/jobs/${jobId}/printer`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ printer_id: printerId }),
+                });
+
+                if (response.ok) {
+                    console.log('[SET_PRINTER] ✓ Printer assigned');
+                    loadJobs();
+                } else {
+                    console.log('[SET_PRINTER] ✗ Failed:', response.status);
+                    alert('Failed to assign printer');
+                }
+            } catch (err) {
+                console.error('[SET_PRINTER] Error:', err);
+                alert('Error assigning printer: ' + err.message);
+            }
         }
 
         async function completeJob(jobId) {

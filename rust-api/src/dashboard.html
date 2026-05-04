@@ -945,27 +945,27 @@ async function renderQueue() {
     const queue = await api('/api/v2/jobs/public/queue');
     const el = document.getElementById('queue-list');
     if (!Array.isArray(queue) || queue.length === 0) {
-      el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;">No jobs in the queue right now.</div>';
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:#475569;">No jobs in the queue right now.</div>';
       return;
     }
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">#</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">Student</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">Period</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">Teacher</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">File</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">Printer</th>
-        <th style="padding:10px 12px;text-align:left;color:#64748b;font-weight:600;">Submitted</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">#</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Student</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Period</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Teacher</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">File</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Printer</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Submitted</th>
       </tr></thead><tbody>${
-        queue.map(j => `<tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:8px 12px;font-weight:600;color:#64748b;">${j.position}</td>
-          <td style="padding:8px 12px;">${esc(j.student_name)}</td>
-          <td style="padding:8px 12px;">${esc(j.class_period)}</td>
-          <td style="padding:8px 12px;">${esc(j.teacher)}</td>
-          <td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(j.filename)}">${esc(j.filename)}</td>
-          <td style="padding:8px 12px;"><span style="background:#f0f9ff;color:#0369a1;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${esc(j.printer_model)}</span></td>
-          <td style="padding:8px 12px;color:#94a3b8;font-size:12px;">${new Date(j.created_at).toLocaleTimeString()}</td>
+        queue.map(j => `<tr style="border-bottom:1px solid #f1f5f9;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f0f9ff'" onmouseout="this.style.backgroundColor='transparent'">
+          <td style="padding:8px 12px;font-weight:600;color:#0f172a;">${j.position}</td>
+          <td style="padding:8px 12px;color:#334155;">${esc(j.student_name)}</td>
+          <td style="padding:8px 12px;color:#334155;">${esc(j.class_period)}</td>
+          <td style="padding:8px 12px;color:#334155;">${esc(j.teacher)}</td>
+          <td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;" title="${esc(j.filename)}">${esc(j.filename)}</td>
+          <td style="padding:8px 12px;"><span style="background:#0369a1;color:#ffffff;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">${esc(j.printer_model)}</span></td>
+          <td style="padding:8px 12px;color:#64748b;font-size:12px;">${new Date(j.created_at).toLocaleTimeString()}</td>
         </tr>`).join('')
       }</tbody></table>`;
   } catch (e) {

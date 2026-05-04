@@ -692,7 +692,231 @@ pub async fn delete_job(
     }
 }
 
-/// GET /api/v2/jobs/{id} (get job status)
+/// PUT /api/v2/jobs/{id}/status (set job status - admin only)
+#[axum::debug_handler]
+pub async fn set_job_status(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<JobResponse>, (StatusCode, Json<serde_json::Value>)> {
+    info!("[SET_JOB_STATUS] PUT /api/v2/jobs/{}/status called", job_id);
+    
+    let client_ip = addr.ip().to_string();
+    
+    // Verify staff access
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            error!("[SET_JOB_STATUS] ✗ No Bearer token found");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" })))
+        })?;
+
+    let user = state.users.verify_session(token, &client_ip).await
+        .ok_or_else(|| {
+            error!("[SET_JOB_STATUS] ✗ Invalid or expired token");
+            (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" })))
+        })?;
+    
+    if !user.role.can_manage_queue() {
+        error!("[SET_JOB_STATUS] ✗ User lacks queue management permission");
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Insufficient permissions" }))));
+    }
+
+    // Parse new status from request body
+    let new_status_str = payload.get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            error!("[SET_JOB_STATUS] ✗ Missing 'status' field in request");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Missing 'status' field" })))
+        })?;
+
+    let new_status = match new_status_str.to_lowercase().as_str() {
+        "queued" => crate::jobs::JobStatus::Queued,
+        "inprogress" => crate::jobs::JobStatus::InProgress,
+        "printing" => crate::jobs::JobStatus::Printing,
+        "collect" => crate::jobs::JobStatus::Collect,
+        "completed" => crate::jobs::JobStatus::Completed,
+        "cancelled" => crate::jobs::JobStatus::Cancelled,
+        "error" => crate::jobs::JobStatus::Error,
+        _ => {
+            error!("[SET_JOB_STATUS] ✗ Invalid status: {}", new_status_str);
+            return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": format!("Invalid status: {}", new_status_str) }))));
+        }
+    };
+
+    match state.jobs.set_job_status(&job_id, new_status).await {
+        Ok(job) => {
+            info!("[SET_JOB_STATUS] ✓ Job {} status updated to {:?}", job_id, job.status);
+            Ok(Json(JobResponse::from_job(&job)))
+        }
+        Err(e) => {
+            error!("[SET_JOB_STATUS] ✗ Error: {}", e);
+            Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))
+        }
+    }
+}
+
+/// PUT /api/v2/jobs/{id}/printer (set printer for job - admin only)
+#[axum::debug_handler]
+pub async fn set_job_printer(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<JobResponse>, (StatusCode, Json<serde_json::Value>)> {
+    info!("[SET_JOB_PRINTER] PUT /api/v2/jobs/{}/printer called", job_id);
+    
+    let client_ip = addr.ip().to_string();
+    
+    // Verify staff access
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            error!("[SET_JOB_PRINTER] ✗ No Bearer token found");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" })))
+        })?;
+
+    let user = state.users.verify_session(token, &client_ip).await
+        .ok_or_else(|| {
+            error!("[SET_JOB_PRINTER] ✗ Invalid or expired token");
+            (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" })))
+        })?;
+    
+    if !user.role.can_manage_queue() {
+        error!("[SET_JOB_PRINTER] ✗ User lacks queue management permission");
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Insufficient permissions" }))));
+    }
+
+    // Parse printer_id from request body
+    let printer_id = payload.get("printer_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            error!("[SET_JOB_PRINTER] ✗ Missing 'printer_id' field in request");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Missing 'printer_id' field" })))
+        })?;
+
+    match state.jobs.set_job_printer(&job_id, printer_id.to_string()).await {
+        Ok(job) => {
+            info!("[SET_JOB_PRINTER] ✓ Job {} assigned to printer: {:?}", job_id, job.printer_id);
+            Ok(Json(JobResponse::from_job(&job)))
+        }
+        Err(e) => {
+            error!("[SET_JOB_PRINTER] ✗ Error: {}", e);
+            Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))
+        }
+    }
+}
+
+/// POST /api/v2/jobs/clear (clear all completed jobs and delete their files - admin only)
+#[axum::debug_handler]
+pub async fn clear_jobs(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    info!("[CLEAR_JOBS] POST /api/v2/jobs/clear called");
+    
+    let client_ip = addr.ip().to_string();
+    
+    // Verify staff access
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| {
+            error!("[CLEAR_JOBS] ✗ No Bearer token found");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" })))
+        })?;
+
+    let user = state.users.verify_session(token, &client_ip).await
+        .ok_or_else(|| {
+            error!("[CLEAR_JOBS] ✗ Invalid or expired token");
+            (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" })))
+        })?;
+    
+    if !user.role.can_manage_queue() {
+        error!("[CLEAR_JOBS] ✗ User lacks queue management permission");
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Insufficient permissions" }))));
+    }
+
+    // Parse status filter from request body (optional)
+    let status_filter = payload.get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("completed");
+
+    // Parse and validate status
+    let status_to_clear = match status_filter.to_lowercase().as_str() {
+        "completed" => crate::jobs::JobStatus::Completed,
+        "cancelled" => crate::jobs::JobStatus::Cancelled,
+        "error" => crate::jobs::JobStatus::Error,
+        _ => {
+            error!("[CLEAR_JOBS] ✗ Invalid status filter: {}", status_filter);
+            return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": format!("Invalid status: {}", status_filter) }))));
+        }
+    };
+
+    info!("[CLEAR_JOBS] Clearing jobs with status: {:?}", status_to_clear);
+
+    match state.jobs.clear_jobs_by_status(status_to_clear).await {
+        Ok(deleted_jobs) => {
+            let count = deleted_jobs.len();
+            info!("[CLEAR_JOBS] ✓ Cleared {} jobs", count);
+            
+            // Delete files for each job
+            let mut deleted_files = 0;
+            for job in &deleted_jobs {
+                let file_path = std::path::Path::new(&job.file_path);
+                if file_path.exists() {
+                    info!("[CLEAR_JOBS] Deleting file: {}", job.file_path);
+                    match std::fs::remove_file(file_path) {
+                        Ok(_) => {
+                            deleted_files += 1;
+                            info!("[CLEAR_JOBS] ✓ File deleted: {}", job.file_path);
+                        }
+                        Err(e) => {
+                            warn!("[CLEAR_JOBS] ⚠ Failed to delete file: {} - {}", job.file_path, e);
+                        }
+                    }
+                }
+
+                // Also try to delete .gcode and .gcode.emf variants
+                let base_path = file_path.with_extension("");
+                for ext in &["gcode", "gcode.emf", "gco"] {
+                    let variant_path = base_path.with_extension(ext);
+                    if variant_path.exists() {
+                        info!("[CLEAR_JOBS] Deleting variant file: {}", variant_path.display());
+                        if let Err(e) = std::fs::remove_file(&variant_path) {
+                            warn!("[CLEAR_JOBS] ⚠ Failed to delete variant: {} - {}", variant_path.display(), e);
+                        }
+                    }
+                }
+            }
+
+            info!("[CLEAR_JOBS] ✓ Cleared {} jobs, deleted {} files", count, deleted_files);
+            Ok(Json(serde_json::json!({
+                "message": format!("Cleared {} jobs", count),
+                "count": count,
+                "files_deleted": deleted_files,
+                "status": status_filter
+            })))
+        }
+        Err(e) => {
+            error!("[CLEAR_JOBS] ✗ Error: {}", e);
+            Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e }))))
+        }
+    }
+}
+
+/// GET /api/v2/jobs/public/queue (public — no auth required, limited fields)
+/// Returns queued jobs with only the info students need to see their position.
 #[axum::debug_handler]
 pub async fn get_job(
     State(state): State<AppState>,
@@ -729,3 +953,4 @@ pub async fn public_queue(
         })
         .collect())
 }
+
