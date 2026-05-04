@@ -17,6 +17,8 @@ use axum::Router;
 use state::AppState;
 use tracing::info;
 
+const MAX_UPLOAD_BYTES: usize = 100 * 1024 * 1024; // 100 MB
+
 #[tokio::main]
 async fn main() {
     // Install the rustls crypto provider (needed for proprietary TLS streaming)
@@ -66,6 +68,7 @@ async fn main() {
         .route("/v1/printers/{id}/stream/mjpeg", get(api::stream_mjpeg))
         .route("/v1/streams/start", post(api::start_all_streams))
         .route("/v1/streams/stop", post(api::stop_all_streams))
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(state)
         .into_make_service_with_connect_info::<std::net::SocketAddr>();
 

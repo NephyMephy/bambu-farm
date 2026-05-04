@@ -167,6 +167,19 @@ pub async fn upload_job(
     let mut field_count = 0;
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         error!("[MULTIPART ERROR] Failed to read next field: {}", e);
+        let err_text = e.to_string().to_lowercase();
+        let is_too_large = err_text.contains("length limit")
+            || err_text.contains("body too large")
+            || err_text.contains("payload too large");
+
+        if is_too_large {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(serde_json::json!({
+                    "error": "Upload too large. Please use a file under 100 MB."
+                })),
+            );
+        }
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": format!("Failed to parse upload form: {e}") })),
