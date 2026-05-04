@@ -380,30 +380,39 @@
             const password = document.getElementById('password').value;
             const alertDiv = document.getElementById('loginAlert');
 
+            console.log('[LOGIN] Attempting login for username:', username);
+
             if (!username || !password) {
+                console.warn('[LOGIN] Missing credentials');
                 alertDiv.innerHTML = '<div class="alert error">Please enter username and password</div>';
                 return;
             }
 
             try {
+                console.log('[LOGIN] Sending POST to', `${API_BASE}/auth/login`);
                 const response = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
 
+                console.log('[LOGIN] Response status:', response.status);
                 const data = await response.json();
+                console.log('[LOGIN] Response data:', data);
 
                 if (response.ok) {
                     token = data.token;
+                    console.log('[LOGIN] ✓ Login successful, token:', token.substring(0, 10) + '...');
                     localStorage.setItem('token', token);
                     showConsole();
                     loadJobs();
                 } else {
+                    console.error('[LOGIN] ✗ Login failed:', data.error);
                     alertDiv.innerHTML = `<div class="alert error">${esc(data.error || 'Login failed')}</div>`;
                 }
             } catch (e) {
-                alertDiv.innerHTML = '<div class="alert error">Connection error</div>';
+                console.error('[LOGIN] ✗ Network error:', e);
+                alertDiv.innerHTML = '<div class="alert error">Connection error: ' + e.message + '</div>';
             }
         }
 
@@ -422,27 +431,41 @@
         }
 
         async function loadJobs() {
+            console.log('[LOAD_JOBS] Fetching jobs...');
             try {
-                const response = await fetch(`${API_BASE}/api/v2/jobs`, {
+                const url = `${API_BASE}/api/v2/jobs`;
+                console.log('[LOAD_JOBS] Endpoint:', url);
+                console.log('[LOAD_JOBS] Token:', token ? token.substring(0, 10) + '...' : 'NO TOKEN');
+                
+                const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
+                console.log('[LOAD_JOBS] Response status:', response.status);
+
                 if (response.status === 401) {
+                    console.warn('[LOAD_JOBS] ✗ Unauthorized (401) - logging out');
                     logout();
                     return;
                 }
 
                 const data = await response.json();
+                console.log('[LOAD_JOBS] Response data:', data);
+                console.log('[LOAD_JOBS] Data is array?', Array.isArray(data));
+                console.log('[LOAD_JOBS] Job count:', Array.isArray(data) ? data.length : 'N/A');
+                
                 if (Array.isArray(data)) {
                     allJobs = data;
+                    console.log('[LOAD_JOBS] ✓ Loaded', data.length, 'jobs');
                     updateStats(data);
                     renderTable();
                 } else {
-                    document.getElementById('jobsList').innerHTML = '<div class="loading">Error loading jobs.</div>';
+                    console.error('[LOAD_JOBS] ✗ Response is not an array:', typeof data);
+                    document.getElementById('jobsList').innerHTML = '<div class="loading">Error: Invalid response format</div>';
                 }
             } catch (e) {
-                console.error('Load jobs error:', e);
-                document.getElementById('jobsList').innerHTML = '<div class="loading">Error loading jobs.</div>';
+                console.error('[LOAD_JOBS] ✗ Network error:', e);
+                document.getElementById('jobsList').innerHTML = '<div class="loading">Error loading jobs: ' + e.message + '</div>';
             }
         }
 
@@ -517,40 +540,56 @@
         }
 
         async function completeJob(jobId) {
+            console.log('[COMPLETE_JOB] Marking job', jobId, 'as complete');
             if (!confirm('Mark this job as completed?')) return;
             try {
-                const response = await fetch(`${API_BASE}/api/v2/jobs/${jobId}/complete`, {
+                const url = `${API_BASE}/api/v2/jobs/${jobId}/complete`;
+                console.log('[COMPLETE_JOB] POST to', url);
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
+                console.log('[COMPLETE_JOB] Response status:', response.status);
+                
                 if (response.ok) {
+                    console.log('[COMPLETE_JOB] ✓ Job marked complete');
                     loadJobs();
                 } else {
                     const data = await response.json();
+                    console.error('[COMPLETE_JOB] ✗ Error:', data.error);
                     alert(`Error: ${data.error || 'Failed to complete job'}`);
                 }
             } catch (e) {
-                alert('Network error');
+                console.error('[COMPLETE_JOB] ✗ Network error:', e);
+                alert('Network error: ' + e.message);
             }
         }
 
         async function deleteJob(jobId) {
+            console.log('[DELETE_JOB] Deleting job', jobId);
             if (!confirm('Delete this completed job and remove the file from disk?')) return;
             try {
-                const response = await fetch(`${API_BASE}/api/v2/jobs/${jobId}`, {
+                const url = `${API_BASE}/api/v2/jobs/${jobId}`;
+                console.log('[DELETE_JOB] DELETE to', url);
+                const response = await fetch(url, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
+                console.log('[DELETE_JOB] Response status:', response.status);
+                
                 if (response.ok) {
+                    console.log('[DELETE_JOB] ✓ Job deleted');
                     loadJobs();
                 } else {
                     const data = await response.json();
+                    console.error('[DELETE_JOB] ✗ Error:', data.error);
                     alert(`Error: ${data.error || 'Failed to delete job'}`);
                 }
             } catch (e) {
-                alert('Network error');
+                console.error('[DELETE_JOB] ✗ Network error:', e);
+                alert('Network error: ' + e.message);
             }
         }
 
@@ -567,9 +606,13 @@
             }
         }, 30000);
 
+        console.log('[INIT] Page loading, checking for existing token...');
         if (token) {
+            console.log('[INIT] ✓ Token found in localStorage, showing console');
             showConsole();
             loadJobs();
+        } else {
+            console.log('[INIT] No token found, showing login form');
         }
     </script>
 </body>
