@@ -243,41 +243,26 @@ pub async fn upload_job(
         ));
     }
 
-    // Validate file extension — reject .stl and non-gcode .3mf early
+    // Validate file extension — accept only .stl and .3mf (no gcode validation for unsliced models)
     let extension = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
     match extension.as_str() {
-        "stl" => {
+        "stl" | "3mf" => {
+            // Accept unsliced STL and 3MF model files
+            info!(%file_name, "Accepted unsliced model file");
+        }
+        "gcode" | "gco" => {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
-                    "error": "STL files cannot be printed directly. Please slice your model in Bambu Studio first, then upload the .gcode or .3mf file."
+                    "error": ".gcode and .gco files cannot be uploaded. Please upload the unsliced .stl or .3mf model file instead."
                 })),
             ));
-        }
-        "3mf" => {
-            // Validate that this is a sliced 3MF (contains gcode), not a raw model 3MF
-            let precheck = gcode_validate::validate_file(&file_data, &file_name, "A1");
-            if !precheck.is_valid {
-                if let Some(ref msg) = precheck.error_message {
-                    if msg.contains("No gcode found") || msg.contains("not a valid Bambu Studio slice") {
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            Json(serde_json::json!({
-                                "error": "This .3mf file is an unsliced model, not a print-ready file. Please open it in Bambu Studio, slice it, then export the sliced file (File → Export → Export plate sliced file) and upload that instead."
-                            })),
-                        ));
-                    }
-                }
-            }
-        }
-        "gcode" | "gco" => {
-            // Valid — will be validated below against printer model
         }
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
-                    "error": format!("Unsupported file type '.{}'. Please upload a .gcode or sliced .3mf file.", extension)
+                    "error": format!("Unsupported file type '.{}'. Please upload a .stl or .3mf file.", extension)
                 })),
             ));
         }
@@ -287,29 +272,6 @@ pub async fn upload_job(
     let model = parse_printer_model(&printer_model_str).map_err(|e| {
         (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e })))
     })?;
-
-    // Validate gcode against printer model
-    let validation = gcode_validate::validate_file(&file_data, &file_name, model.as_str());
-    if !validation.is_valid {
-        warn!(
-            %file_name,
-            detected = ?validation.detected_printer,
-            "gcode validation failed"
-        );
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": validation.error_message.unwrap_or_else(|| "Gcode validation failed. Please re-upload or contact a TA or Teacher.".to_string()),
-                "detected_printer": validation.detected_printer,
-            })),
-        ));
-    }
-
-    info!(
-        %file_name,
-        detected = ?validation.detected_printer,
-        "gcode validation passed"
-    );
 
     // Create the BambuTasks directory in the user's Documents folder
     let bambu_tasks_dir = get_bambu_tasks_dir().map_err(|e| {

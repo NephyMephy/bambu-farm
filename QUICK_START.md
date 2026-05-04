@@ -132,7 +132,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
 
 **Web Form (Recommended):** Open browser → **http://localhost:8080/submit**
 
-The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the sliced .gcode/.3mf file. STL uploads are rejected with a clear message. Accepted files are saved under the Windows user's Documents folder in `BambuTasks` and renamed to `requestorname-jobid.extension`.
+The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the unsliced model file (.stl or .3mf). Upload only unsliced model files—sliced/gcode files are rejected. Files are saved under the Windows user's Documents folder in `BambuTasks` and renamed to `requestorname-jobid.extension`.
 
 **API (JSON):**
 ```bash
@@ -175,14 +175,14 @@ $job = Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/submit" `
 $JOB_ID = $job.id
 ```
 
-**API (File Upload with Gcode Validation):**
+**API (File Upload with Validation):**
 ```bash
 curl -X POST http://localhost:8080/api/v2/jobs/upload \
   -F "name=Alice Johnson" \
   -F "class_period=Period 2" \
   -F "teacher=Johnson" \
   -F "printer_model=A1" \
-  -F "file=@bracket_assembly.3mf"
+  -F "file=@bracket_assembly.stl"
 ```
 
 ```powershell
@@ -194,7 +194,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/upload" `
     class_period = "Period 2"
     teacher = "Johnson"
     printer_model = "A1"
-    file = Get-Item -Path "bracket_assembly.3mf"
+    file = Get-Item -Path "bracket_assembly.stl"
   }
 ```
 
