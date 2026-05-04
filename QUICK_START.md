@@ -132,7 +132,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
 
 **Web Form (Recommended):** Open browser → **http://localhost:8080/submit**
 
-The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the sliced .gcode/.3mf file. It automatically validates the gcode against the selected printer model and rejects incompatible files.
+The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the sliced .gcode/.3mf file. STL uploads are rejected with a clear message. Accepted files are saved under the Windows user's Documents folder in `BambuTasks` and renamed to `requestorname-jobid.extension`.
 
 **API (JSON):**
 ```bash
@@ -255,9 +255,8 @@ Open browser: **http://localhost:8080/admin**
 
 Features:
 - Login with admin/teacher credentials
-- Create new users
-- View all jobs and queue
-- Dashboard with metrics
+- View task logs with date/time, name, period, teacher, job ID, and file location
+- Mark completed jobs as complete or delete them after completion
 
 ### 9. View Printer Dashboard
 Open browser: **http://localhost:8080/**
@@ -312,9 +311,12 @@ Each printer card shows:
 | POST | `/api/v2/jobs/submit` | None | Submit job via JSON (public) |
 | POST | `/api/v2/jobs/upload` | None | Submit job with file upload + gcode validation (public) |
 | GET | `/api/v2/jobs/{id}` | None | Get job status (public) |
+| GET | `/api/v2/jobs/public/queue` | None | View queued jobs (public, limited fields) |
 | GET | `/api/v2/jobs` | Bearer | List all jobs (staff) |
 | GET | `/api/v2/jobs/queue` | Bearer | List queued jobs (staff) |
 | POST | `/api/v2/jobs/{id}/cancel` | Bearer | Cancel job (staff) |
+| POST | `/api/v2/jobs/{id}/complete` | Bearer | Mark job complete (staff) |
+| DELETE | `/api/v2/jobs/{id}` | Bearer | Delete completed job and remove file (staff) |
 | POST | `/api/v2/jobs/{id}/dispatch/{printer_id}` | Bearer | Dispatch to printer (staff) |
 
 ## Common Usage Patterns

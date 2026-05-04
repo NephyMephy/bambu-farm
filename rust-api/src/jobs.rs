@@ -55,6 +55,8 @@ pub struct PrintJob {
     pub progress_percent: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When the job was marked completed
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 /// Job queue manager
@@ -114,6 +116,7 @@ impl JobQueue {
             progress_percent: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            completed_at: None,
         };
 
         let job_id = job.id.clone();
@@ -182,7 +185,6 @@ impl JobQueue {
         Ok(job.clone())
     }
 
-    #[allow(dead_code)]
     /// Mark job as completed
     pub async fn complete_job(&self, job_id: &str) -> Result<PrintJob, String> {
         let mut jobs = self.jobs.write().await;
@@ -192,9 +194,41 @@ impl JobQueue {
 
         job.status = JobStatus::Completed;
         job.progress_percent = 100;
+        job.completed_at = Some(Utc::now());
         job.updated_at = Utc::now();
 
-        Ok(job.clone())
+        // Remove from queue order if still there
+        let jid = job_id.to_string();
+        drop(jobs);
+        let mut order = self.job_order.write().await;
+        order.retain(|id| id != &jid);
+
+        let jobs = self.jobs.read().await;
+        Ok(jobs.get(job_id).unwrap().clone())
+    }
+
+    /// Delete a completed job
+    pub async fn delete_job(&self, job_id: &str) -> Result<PrintJob, String> {
+        let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get(job_id)
+            .ok_or_else(|| "Job not found".to_string())?;
+
+        if job.status != JobStatus::Completed {
+            return Err(format!(
+                "Can only delete completed jobs, this is {}",
+                format!("{:?}", job.status).to_lowercase()
+            ));
+        }
+
+        let removed = jobs.remove(job_id).unwrap();
+
+        // Remove from queue order
+        drop(jobs);
+        let mut order = self.job_order.write().await;
+        order.retain(|id| id != job_id);
+
+        Ok(removed)
     }
 
     #[allow(dead_code)]
@@ -217,6 +251,15 @@ impl JobQueue {
         jobs.values()
             .find(|j| j.printer_id.as_deref() == Some(printer_id) && j.status == JobStatus::InProgress)
             .cloned()
+    }
+
+    /// Update a job's file path (used after renaming the uploaded file)
+    pub async fn update_file_path(&self, job_id: &str, new_path: String) {
+        let mut jobs = self.jobs.write().await;
+        if let Some(job) = jobs.get_mut(job_id) {
+            job.file_path = new_path;
+            job.updated_at = Utc::now();
+        }
     }
 
     /// Cancel a job

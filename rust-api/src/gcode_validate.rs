@@ -388,8 +388,11 @@ pub fn validate_file(data: &[u8], filename: &str, target_printer_model: &str) ->
             // 3MF ZIP archive — extract embedded gcode
             extract_gcode_from_3mf(data)
         }
+        "stl" => Err(
+            "STL files are 3D models, not sliced print files. Please slice your model in Bambu Studio first and upload the resulting .gcode or sliced .3mf file.".to_string()
+        ),
         _ => Err(format!(
-            "Unsupported file type '.{extension}'. Please upload a .gcode or .3mf file."
+            "Unsupported file type '.{extension}'. Please upload a .gcode or sliced .3mf file."
         )),
     };
 
@@ -498,7 +501,7 @@ mod tests {
     fn test_validate_unsupported_extension() {
         let result = validate_file(b"data", "test.stl", "P1S");
         assert!(!result.is_valid);
-        assert!(result.error_message.unwrap().contains("Unsupported file type"));
+        assert!(result.error_message.unwrap().contains("STL files are 3D models"));
     }
 
     #[test]

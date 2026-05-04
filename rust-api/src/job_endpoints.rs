@@ -28,7 +28,9 @@ pub struct JobResponse {
     pub printer_model: String,
     pub status: String,
     pub progress_percent: u32,
+    pub file_path: String,
     pub created_at: String,
+    pub completed_at: Option<String>,
 }
 
 impl JobResponse {
@@ -42,7 +44,9 @@ impl JobResponse {
             printer_model: job.printer_model.as_str().to_string(),
             status: format!("{:?}", job.status).to_lowercase(),
             progress_percent: job.progress_percent,
+            file_path: job.file_path.clone(),
             created_at: job.created_at.to_rfc3339(),
+            completed_at: job.completed_at.map(|t| t.to_rfc3339()),
         }
     }
 }
@@ -60,6 +64,28 @@ fn parse_printer_model(model_str: &str) -> Result<PrinterModel, String> {
     }
 }
 
+/// Get the BambuTasks folder path inside the user's Documents directory.
+/// - Windows: `C:\Users\<user>\Documents\BambuTasks`
+/// - macOS: `~/Documents/BambuTasks`
+/// - Linux: `~/Documents/BambuTasks`
+fn get_bambu_tasks_dir() -> Result<std::path::PathBuf, String> {
+    let docs_dir = dirs::document_dir()
+        .ok_or_else(|| "Could not locate user Documents folder".to_string())?;
+    Ok(docs_dir.join("BambuTasks"))
+}
+
+/// Build the renamed file path: BambuTasks/<sanitized_name>-<jobid>.<extension>
+fn build_renamed_path(student_name: &str, job_id: &str, extension: &str) -> Result<std::path::PathBuf, String> {
+    let base_dir = get_bambu_tasks_dir()?;
+    // Sanitize student name: replace spaces and special chars with underscores
+    let safe_name: String = student_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .collect();
+    let filename = format!("{}-{}.{}", safe_name, job_id, extension);
+    Ok(base_dir.join(&filename))
+}
+
 /// POST /api/v2/jobs/submit (public - students can submit via JSON)
 #[axum::debug_handler]
 pub async fn submit_job(
@@ -71,7 +97,7 @@ pub async fn submit_job(
     })?;
 
     let teacher = req.teacher.unwrap_or_default();
-    let file_path = format!("/uploads/{}/{}", chrono::Utc::now().timestamp(), req.filename);
+    let file_path = format!("BambuTasks/{}", req.filename);
 
     match state.jobs
         .submit_job(
@@ -217,6 +243,46 @@ pub async fn upload_job(
         ));
     }
 
+    // Validate file extension — reject .stl and non-gcode .3mf early
+    let extension = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
+    match extension.as_str() {
+        "stl" => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "STL files cannot be printed directly. Please slice your model in Bambu Studio first, then upload the .gcode or .3mf file."
+                })),
+            ));
+        }
+        "3mf" => {
+            // Validate that this is a sliced 3MF (contains gcode), not a raw model 3MF
+            let precheck = gcode_validate::validate_file(&file_data, &file_name, "A1");
+            if !precheck.is_valid {
+                if let Some(ref msg) = precheck.error_message {
+                    if msg.contains("No gcode found") || msg.contains("not a valid Bambu Studio slice") {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({
+                                "error": "This .3mf file is an unsliced model, not a print-ready file. Please open it in Bambu Studio, slice it, then export the sliced file (File → Export → Export plate sliced file) and upload that instead."
+                            })),
+                        ));
+                    }
+                }
+            }
+        }
+        "gcode" | "gco" => {
+            // Valid — will be validated below against printer model
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Unsupported file type '.{}'. Please upload a .gcode or sliced .3mf file.", extension)
+                })),
+            ));
+        }
+    }
+
     // Parse printer model
     let model = parse_printer_model(&printer_model_str).map_err(|e| {
         (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e })))
@@ -245,51 +311,64 @@ pub async fn upload_job(
         "gcode validation passed"
     );
 
-    // Save the file to disk
-    let upload_dir = std::path::Path::new("uploads");
-    if !upload_dir.exists() {
-        std::fs::create_dir_all(upload_dir).map_err(|e| {
+    // Create the BambuTasks directory in the user's Documents folder
+    let bambu_tasks_dir = get_bambu_tasks_dir().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        )
+    })?;
+    if !bambu_tasks_dir.exists() {
+        std::fs::create_dir_all(&bambu_tasks_dir).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Failed to create upload directory: {e}") })),
+                Json(serde_json::json!({ "error": format!("Failed to create BambuTasks directory: {e}") })),
             )
         })?;
     }
 
-    let job_id = crate::jobs::uuid_simple();
-    let extension = file_name.rsplit('.').next().unwrap_or("gcode");
-    let saved_name = format!("{job_id}.{extension}");
-    let file_path = upload_dir.join(&saved_name);
+    // Submit the job first to get a job ID
+    let job = state.jobs
+        .submit_job(
+            student_name.clone(),
+            class_period,
+            teacher,
+            file_name,
+            model,
+            String::new(), // placeholder, will update after rename
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e })),
+            )
+        })?;
 
-    std::fs::write(&file_path, &file_data).map_err(|e| {
+    // Rename and save the file: requestorname-jobid.extension
+    let renamed_path = build_renamed_path(&student_name, &job.id, &extension).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        )
+    })?;
+
+    std::fs::write(&renamed_path, &file_data).map_err(|e| {
+        // Clean up the job if file write fails
+        let _ = state.jobs.cancel_job(&job.id);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("Failed to save file: {e}") })),
         )
     })?;
 
-    // Submit the job
-    match state.jobs
-        .submit_job(
-            student_name,
-            class_period,
-            teacher,
-            file_name,
-            model,
-            file_path.to_string_lossy().to_string(),
-        )
-        .await
-    {
-        Ok(job) => Ok((StatusCode::CREATED, Json(JobResponse::from_job(&job)))),
-        Err(e) => {
-            // Clean up saved file on error
-            let _ = std::fs::remove_file(&file_path);
-            Err((
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": e })),
-            ))
-        }
-    }
+    // Update the job's file_path to the actual saved location
+    state.jobs.update_file_path(&job.id, renamed_path.to_string_lossy().to_string()).await;
+
+    // Re-fetch the job with updated path
+    let updated_job = state.jobs.get_job(&job.id).await.unwrap_or(job);
+
+    Ok((StatusCode::CREATED, Json(JobResponse::from_job(&updated_job))))
 }
 
 /// GET /api/v2/jobs (list all jobs - staff only)
@@ -400,6 +479,75 @@ pub async fn dispatch_job(
     }
 }
 
+/// POST /api/v2/jobs/{id}/complete (mark job as completed - staff only)
+#[axum::debug_handler]
+pub async fn complete_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<Json<JobResponse>, (StatusCode, Json<serde_json::Value>)> {
+    // Verify staff access
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" }))))?;
+
+    let user = state.users.verify_session(token, "127.0.0.1").await
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" }))))?;
+
+    if !user.role.can_dispatch_jobs() {
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Insufficient permissions" }))));
+    }
+
+    match state.jobs.complete_job(&job_id).await {
+        Ok(job) => Ok(Json(JobResponse::from_job(&job))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
+/// DELETE /api/v2/jobs/{id} (delete a completed job - staff only)
+#[axum::debug_handler]
+pub async fn delete_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Verify staff access
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "No token" }))))?;
+
+    let user = state.users.verify_session(token, "127.0.0.1").await
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid token" }))))?;
+
+    if !user.role.can_manage_queue() {
+        return Err((StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Insufficient permissions" }))));
+    }
+
+    match state.jobs.delete_job(&job_id).await {
+        Ok(job) => {
+            // Try to delete the file from disk
+            let file_path = std::path::Path::new(&job.file_path);
+            if file_path.exists() {
+                if let Err(e) = std::fs::remove_file(file_path) {
+                    warn!(path = %job.file_path, error = %e, "failed to delete job file");
+                }
+            }
+            Ok(Json(serde_json::json!({ "message": "Job deleted", "id": job.id })))
+        }
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
 /// GET /api/v2/jobs/{id} (get job status)
 #[axum::debug_handler]
 pub async fn get_job(
@@ -413,4 +561,27 @@ pub async fn get_job(
             Json(serde_json::json!({ "error": "Job not found" })),
         )),
     }
+}
+
+/// GET /api/v2/jobs/public/queue (public — no auth required, limited fields)
+/// Returns queued jobs with only the info students need to see their position.
+#[axum::debug_handler]
+pub async fn public_queue(
+    State(state): State<AppState>,
+) -> Json<Vec<serde_json::Value>> {
+    let jobs = state.jobs.list_queued_jobs().await;
+    Json(jobs
+        .iter()
+        .enumerate()
+        .map(|(i, j)| {
+            serde_json::json!({
+                "position": i + 1,
+                "student_name": j.student_name,
+                "class_period": j.class_period,
+                "teacher": j.teacher,
+                "status": format!("{:?}", j.status).to_lowercase(),
+                "created_at": j.created_at.to_rfc3339(),
+            })
+        })
+        .collect())
 }

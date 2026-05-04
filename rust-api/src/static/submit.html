@@ -322,11 +322,11 @@
             <div class="form-group">
                 <label>Upload Sliced File <span class="required">*</span></label>
                 <div class="file-upload-area" id="dropZone">
-                    <input type="file" id="file" name="file" accept=".gcode,.gco,.3mf" required>
+                    <input type="file" id="file" name="file" accept=".gcode,.gco,.3mf,.stl" required>
                     <div class="upload-icon" id="uploadIcon">📁</div>
                     <div class="upload-text" id="uploadText">
                         <strong>Click to upload</strong> or drag and drop<br>
-                        .gcode or .3mf files only
+                        .gcode or sliced .3mf files only
                     </div>
                     <div class="file-name" id="fileName" style="display:none"></div>
                     <div class="file-size" id="fileSize" style="display:none"></div>
@@ -394,10 +394,17 @@
             const file = fileInput.files[0];
             if (file) {
                 const ext = file.name.split('.').pop().toLowerCase();
-                const validExt = ['gcode', 'gco', '3mf'];
+                const validExt = ['gcode', 'gco', '3mf', 'stl'];
 
                 if (!validExt.includes(ext)) {
                     showError('Invalid file type. Please upload a .gcode or .3mf file.');
+                    dropZone.classList.add('error');
+                    dropZone.classList.remove('has-file');
+                    return;
+                }
+
+                if (ext === 'stl') {
+                    showError('STL files are 3D models, not sliced print files. Please slice your model in Bambu Studio first and upload the resulting .gcode or sliced .3mf file.');
                     dropZone.classList.add('error');
                     dropZone.classList.remove('has-file');
                     return;
@@ -415,7 +422,7 @@
             } else {
                 dropZone.classList.remove('has-file', 'error');
                 uploadIcon.textContent = '📁';
-                uploadText.innerHTML = '<strong>Click to upload</strong> or drag and drop<br>.gcode or .3mf files only';
+                uploadText.innerHTML = '<strong>Click to upload</strong> or drag and drop<br>.gcode or sliced .3mf files only';
                 fileNameEl.style.display = 'none';
                 fileSizeEl.style.display = 'none';
             }
@@ -473,7 +480,7 @@
                     form.reset();
                     dropZone.classList.remove('has-file');
                     uploadIcon.textContent = '📁';
-                    uploadText.innerHTML = '<strong>Click to upload</strong> or drag and drop<br>.gcode or .3mf files only';
+                    uploadText.innerHTML = '<strong>Click to upload</strong> or drag and drop<br>.gcode or sliced .3mf files only';
                     fileNameEl.style.display = 'none';
                     fileSizeEl.style.display = 'none';
                 } else {
