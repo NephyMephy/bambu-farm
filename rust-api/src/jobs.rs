@@ -369,6 +369,74 @@ impl JobQueue {
     pub async fn clear_completed_jobs(&self) -> Result<Vec<PrintJob>, String> {
         self.clear_jobs_by_status(JobStatus::Completed).await
     }
+
+    /// Find a queued job by task name (contains job ID - partial match)
+    /// Returns the job if found in Queued or InProgress status
+    pub async fn find_job_by_task_name(&self, task_name: &str) -> Option<PrintJob> {
+        let jobs = self.jobs.read().await;
+        jobs.values()
+            .find(|j| {
+                // Match if task_name contains the job ID
+                // and job is not already completed/collected
+                let matches_id = task_name.contains(&j.id);
+                let is_active = j.status == JobStatus::Queued || 
+                               j.status == JobStatus::InProgress ||
+                               j.status == JobStatus::Printing;
+                matches_id && is_active
+            })
+            .cloned()
+    }
+
+    /// Auto-assign a job to a printer if it matches the task name
+    /// Returns (job, was_assigned) where was_assigned indicates if assignment happened
+    pub async fn auto_assign_job_from_task(&self, task_name: &str, printer_id: String) -> Option<(PrintJob, bool)> {
+        if let Some(job) = self.find_job_by_task_name(task_name).await {
+            // Check if already assigned to this printer
+            if job.printer_id.as_ref() == Some(&printer_id) {
+                return Some((job, false)); // Already assigned
+            }
+
+            // If in Queued status, dispatch it (moves to InProgress)
+            if job.status == JobStatus::Queued {
+                match self.dispatch_job(&job.id, printer_id).await {
+                    Ok(updated_job) => return Some((updated_job, true)),
+                    Err(_) => return Some((job, false)),
+                }
+            }
+
+            // If already InProgress or Printing, just update printer_id if needed
+            if job.printer_id.is_none() {
+                match self.set_job_printer(&job.id, printer_id).await {
+                    Ok(updated_job) => return Some((updated_job, true)),
+                    Err(_) => return Some((job, false)),
+                }
+            }
+
+            Some((job, false))
+        } else {
+            None
+        }
+    }
+
+    /// Mark a job as "Collect" when printing is complete (gcode_state == FINISH)
+    pub async fn mark_collect_when_finished(&self, printer_id: &str, gcode_state: Option<&str>) -> Option<PrintJob> {
+        // Only mark as Collect if gcode_state is FINISH
+        if gcode_state != Some("FINISH") {
+            return None;
+        }
+
+        // Find the in-progress job for this printer
+        if let Some(job) = self.job_for_printer(printer_id).await {
+            // Only transition if currently Printing
+            if job.status == JobStatus::Printing {
+                match self.set_job_status(&job.id, JobStatus::Collect).await {
+                    Ok(updated_job) => return Some(updated_job),
+                    Err(_) => return None,
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Generate simple UUID

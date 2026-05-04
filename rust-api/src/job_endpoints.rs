@@ -954,3 +954,39 @@ pub async fn public_queue(
         .collect())
 }
 
+/// GET /api/v2/jobs/public/tracker (public — no auth required, master job status tracker)
+/// Returns all active jobs (Queued, InProgress, Printing, Collect) with full details for dashboard status tracking.
+#[axum::debug_handler]
+pub async fn public_tracker(
+    State(state): State<AppState>,
+) -> Json<Vec<serde_json::Value>> {
+    let all_jobs = state.jobs.list_jobs().await;
+    let active_jobs: Vec<serde_json::Value> = all_jobs
+        .iter()
+        .filter(|j| {
+            // Include Queued, InProgress, Printing, and Collect statuses
+            matches!(j.status, crate::jobs::JobStatus::Queued 
+                | crate::jobs::JobStatus::InProgress 
+                | crate::jobs::JobStatus::Printing 
+                | crate::jobs::JobStatus::Collect)
+        })
+        .map(|j| {
+            serde_json::json!({
+                "id": j.id,
+                "student_name": j.student_name,
+                "class_period": j.class_period,
+                "teacher": j.teacher,
+                "filename": j.filename,
+                "printer_model": j.printer_model.as_str(),
+                "printer_id": j.printer_id,
+                "status": format!("{:?}", j.status).to_lowercase(),
+                "progress_percent": j.progress_percent,
+                "created_at": j.created_at.to_rfc3339(),
+                "updated_at": j.updated_at.to_rfc3339(),
+            })
+        })
+        .collect();
+    
+    Json(active_jobs)
+}
+

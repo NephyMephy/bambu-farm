@@ -1,6 +1,7 @@
 use crate::config::Settings;
 use crate::models::PrinterRecord;
 use crate::stream::WorkerManager;
+use crate::jobs::JobQueue;
 use chrono::{DateTime, Utc};
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, Outgoing, QoS, TlsConfiguration, Transport};
 use serde::{Deserialize, Serialize};
@@ -192,6 +193,7 @@ impl TelemetryManager {
         printer: PrinterRecord,
         settings: Settings,
         workers: Arc<WorkerManager>,
+        jobs: Arc<JobQueue>,
     ) {
         self.unregister_printer(&printer.id).await;
 
@@ -204,7 +206,7 @@ impl TelemetryManager {
         let cache = self.cache.clone();
         let ownership = self.auto_managed.clone();
         tokio::spawn(async move {
-            run_printer_telemetry(printer, settings, workers, cache, ownership, cancel_rx).await;
+            run_printer_telemetry(printer, settings, workers, jobs, cache, ownership, cancel_rx).await;
         });
     }
 
@@ -285,6 +287,7 @@ async fn run_printer_telemetry(
     printer: PrinterRecord,
     settings: Settings,
     workers: Arc<WorkerManager>,
+    jobs: Arc<JobQueue>,
     cache: Arc<RwLock<HashMap<String, PrinterTelemetry>>>,
     auto_managed: Arc<RwLock<HashMap<String, bool>>>,
     mut cancel_rx: watch::Receiver<bool>,
@@ -375,6 +378,33 @@ async fn run_printer_telemetry(
                                         let auto = auto_managed.read().await.get(&printer.id).copied().unwrap_or(false);
 
                                         update_cache(&cache, &printer.id, telemetry.clone()).await;
+
+                                        // Master job status tracker: auto-assign job from task name
+                                        if let Some(task_name) = &telemetry.task_name {
+                                            if let Some((job, was_assigned)) = jobs.auto_assign_job_from_task(task_name, printer.id.clone()).await {
+                                                if was_assigned {
+                                                    info!(printer = %printer.id, job_id = %job.id, student = %job.student_name, "auto-assigned job from task");
+                                                }
+                                                
+                                                // Update job status based on printer state
+                                                if let Some(progress) = telemetry.progress {
+                                                    // If printing and not already marked as Printing, update status
+                                                    if telemetry.is_printing() && job.status != crate::jobs::JobStatus::Printing {
+                                                        let _ = jobs.set_job_status(&job.id, crate::jobs::JobStatus::Printing).await;
+                                                        debug!(printer = %printer.id, job_id = %job.id, "job status: Printing ({progress}%)");
+                                                    }
+                                                }
+                                                
+                                                // Auto-mark as Collect when gcode_state is FINISH
+                                                if let Some(gcode_state) = &telemetry.gcode_state {
+                                                    if gcode_state == "FINISH" {
+                                                        if let Some(collected_job) = jobs.mark_collect_when_finished(&printer.id, Some(gcode_state)).await {
+                                                            info!(printer = %printer.id, job_id = %collected_job.id, "auto-marked job as Collect (printing complete)");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
 
                                         if telemetry.is_printing() && matches!(workers.state(&printer.id).await, crate::models::StreamState::Stopped) {
                                             match workers.start_stream(&printer, &settings).await {

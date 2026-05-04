@@ -173,7 +173,7 @@ pub async fn upsert_printer(
 
     state
         .telemetry
-        .register_printer(record.clone(), state.settings.clone(), state.workers.clone())
+        .register_printer(record.clone(), state.settings.clone(), state.workers.clone(), state.jobs.clone())
         .await;
 
     (StatusCode::OK, Json(record)).into_response()
@@ -248,7 +248,7 @@ pub async fn batch_upsert_printers(
     for record in registered {
         state
             .telemetry
-            .register_printer(record, state.settings.clone(), state.workers.clone())
+            .register_printer(record, state.settings.clone(), state.workers.clone(), state.jobs.clone())
             .await;
     }
 

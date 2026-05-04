@@ -53,6 +53,7 @@ async fn main() {
         .route("/api/v2/jobs/upload", post(job_endpoints::upload_job))
         .route("/api/v2/jobs/clear", post(job_endpoints::clear_jobs))
         .route("/api/v2/jobs/public/queue", get(job_endpoints::public_queue))
+        .route("/api/v2/jobs/public/tracker", get(job_endpoints::public_tracker))
         .route("/api/v2/jobs/queue", get(job_endpoints::get_queue))
         .route("/api/v2/jobs", get(job_endpoints::list_jobs))
         .route("/api/v2/jobs/{id}/cancel", post(job_endpoints::cancel_job))

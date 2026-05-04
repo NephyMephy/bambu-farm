@@ -564,9 +564,9 @@
     <section id="grid" class="grid"></section>
 
     <section id="queue-section" style="margin-top:32px;">
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;color:#1e293b;">🖨️ Print Queue</h2>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;color:#1e293b;">� Master Job Status Tracker</h2>
       <div id="queue-list" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-        <div class="empty" style="padding:20px;text-align:center;color:#94a3b8;">Loading queue...</div>
+        <div class="empty" style="padding:20px;text-align:center;color:#94a3b8;">Loading jobs...</div>
       </div>
     </section>
   </div>
@@ -942,34 +942,49 @@ async function refresh() {
 
 async function renderQueue() {
   try {
-    const queue = await api('/api/v2/jobs/public/queue');
+    const jobs = await api('/api/v2/jobs/public/tracker');
     const el = document.getElementById('queue-list');
-    if (!Array.isArray(queue) || queue.length === 0) {
-      el.innerHTML = '<div style="padding:20px;text-align:center;color:#475569;">No jobs in the queue right now.</div>';
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:#475569;">No active jobs at the moment.</div>';
       return;
     }
+    
+    // Sort jobs: Queued first, then InProgress/Printing, then Collect
+    const statusOrder = { queued: 0, inprogress: 1, printing: 2, collect: 3, completed: 4 };
+    jobs.sort((a, b) => (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99));
+    
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">#</th>
+        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Status</th>
         <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Student</th>
         <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Period</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Teacher</th>
         <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">File</th>
         <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Printer</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Submitted</th>
+        <th style="padding:10px 12px;text-align:center;color:#1e293b;font-weight:700;">Progress</th>
       </tr></thead><tbody>${
-        queue.map(j => `<tr style="border-bottom:1px solid #f1f5f9;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f0f9ff'" onmouseout="this.style.backgroundColor='transparent'">
-          <td style="padding:8px 12px;font-weight:600;color:#0f172a;">${j.position}</td>
-          <td style="padding:8px 12px;color:#334155;">${esc(j.student_name)}</td>
-          <td style="padding:8px 12px;color:#334155;">${esc(j.class_period)}</td>
-          <td style="padding:8px 12px;color:#334155;">${esc(j.teacher)}</td>
-          <td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;" title="${esc(j.filename)}">${esc(j.filename)}</td>
-          <td style="padding:8px 12px;"><span style="background:#0369a1;color:#ffffff;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">${esc(j.printer_model)}</span></td>
-          <td style="padding:8px 12px;color:#64748b;font-size:12px;">${new Date(j.created_at).toLocaleTimeString()}</td>
-        </tr>`).join('')
+        jobs.map(j => {
+          const statusColor = 
+            j.status === 'queued' ? '#94a3b8' :
+            j.status === 'inprogress' ? '#f59e0b' :
+            j.status === 'printing' ? '#3b82f6' :
+            j.status === 'collect' ? '#10b981' :
+            '#6b7280';
+          const statusLabel = j.status === 'inprogress' ? 'In Progress' : 
+                            j.status === 'collect' ? 'Collect' : 
+                            j.status.charAt(0).toUpperCase() + j.status.slice(1);
+          const printerDisplay = j.printer_id ? `<strong>${esc(j.printer_id)}</strong>` : '<em style="color:#94a3b8;">Unassigned</em>';
+          return `<tr style="border-bottom:1px solid #f1f5f9;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f0f9ff'" onmouseout="this.style.backgroundColor='transparent'">
+            <td style="padding:8px 12px;"><span style="background:${statusColor};color:#ffffff;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">${esc(statusLabel)}</span></td>
+            <td style="padding:8px 12px;color:#334155;">${esc(j.student_name)}</td>
+            <td style="padding:8px 12px;color:#334155;">${esc(j.class_period)}</td>
+            <td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;" title="${esc(j.filename)}">${esc(j.filename)}</td>
+            <td style="padding:8px 12px;">${printerDisplay}</td>
+            <td style="padding:8px 12px;text-align:center;color:#334155;"><strong>${j.progress_percent}%</strong></td>
+          </tr>`
+        }).join('')
       }</tbody></table>`;
   } catch (e) {
-    console.error('queue load error:', e);
+    console.error('tracker load error:', e);
   }
 }
 

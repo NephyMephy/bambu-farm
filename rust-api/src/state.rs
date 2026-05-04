@@ -54,7 +54,7 @@ impl AppState {
         let printers: Vec<PrinterRecord> = self.printers.read().await.values().cloned().collect();
         for printer in printers {
             self.telemetry
-                .register_printer(printer, self.settings.clone(), self.workers.clone())
+                .register_printer(printer, self.settings.clone(), self.workers.clone(), self.jobs.clone())
                 .await;
         }
     }
