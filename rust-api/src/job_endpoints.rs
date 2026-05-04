@@ -1,8 +1,9 @@
 use crate::jobs::PrinterModel;
 use crate::state::AppState;
-use axum::extract::{Multipart, State};
+use axum::extract::{Multipart, State, ConnectInfo};
 use axum::http::{StatusCode, HeaderMap};
 use axum::Json;
+use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error};
 
@@ -446,11 +447,12 @@ pub async fn upload_job(
 #[axum::debug_handler]
 pub async fn list_jobs(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<JobResponse>>, (StatusCode, Json<serde_json::Value>)> {
     info!("[LIST_JOBS] GET /api/v2/jobs called");
     
-    let client_ip = get_client_ip(&headers);
+    let client_ip = addr.ip().to_string();
     info!("[LIST_JOBS] Client IP: {}", client_ip);
     
     // Verify staff access
@@ -571,12 +573,13 @@ pub async fn dispatch_job(
 #[axum::debug_handler]
 pub async fn complete_job(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     axum::extract::Path(job_id): axum::extract::Path<String>,
 ) -> Result<Json<JobResponse>, (StatusCode, Json<serde_json::Value>)> {
     info!("[COMPLETE_JOB] POST /api/v2/jobs/{}/complete called", job_id);
     
-    let client_ip = get_client_ip(&headers);
+    let client_ip = addr.ip().to_string();
     info!("[COMPLETE_JOB] Client IP: {}", client_ip);
     
     // Verify staff access
@@ -621,12 +624,13 @@ pub async fn complete_job(
 #[axum::debug_handler]
 pub async fn delete_job(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     axum::extract::Path(job_id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     info!("[DELETE_JOB] DELETE /api/v2/jobs/{} called", job_id);
     
-    let client_ip = get_client_ip(&headers);
+    let client_ip = addr.ip().to_string();
     info!("[DELETE_JOB] Client IP: {}", client_ip);
     
     // Verify staff access
