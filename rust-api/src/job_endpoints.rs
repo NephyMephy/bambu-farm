@@ -1,11 +1,10 @@
-use crate::gcode_validate;
 use crate::jobs::PrinterModel;
 use crate::state::AppState;
 use axum::extract::{Multipart, State};
 use axum::http::{StatusCode, HeaderMap};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 
 /// Request to submit a print job (JSON API — no file upload)
 #[derive(Debug, Deserialize)]
@@ -118,14 +117,14 @@ pub async fn submit_job(
     }
 }
 
-/// POST /api/v2/jobs/upload (public - students submit with file upload + gcode validation)
+/// POST /api/v2/jobs/upload (public - students submit with file upload)
 ///
 /// Accepts `multipart/form-data` with fields:
 /// - `name` (text): Student name
 /// - `class_period` (text): Class period
 /// - `teacher` (text): Teacher name (Johnson or Friesen)
-/// - `printer_model` (text): Printer model (A1, A1 Mini, P1S)
-/// - `file` (file): The .gcode or .3mf sliced file
+/// - `file` (file): The unsliced .stl or .3mf model file
+/// - `printer_model` (text, optional): Printer model (defaults to A1)
 #[axum::debug_handler]
 pub async fn upload_job(
     State(state): State<AppState>,
@@ -134,16 +133,16 @@ pub async fn upload_job(
     let mut student_name = None;
     let mut class_period = None;
     let mut teacher = None;
-    let mut printer_model_str = None;
+    let mut printer_model_str: Option<String> = Some("A1".to_string()); // Default to A1
     let mut file_data = None;
     let mut file_name = None;
 
     // Parse multipart fields
     while let Some(field) = multipart.next_field().await.map_err(|e| {
-        warn!("multipart parse error: {e}");
+        error!("multipart parse error: {e}");
         (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "Failed to parse upload form" })),
+            Json(serde_json::json!({ "error": format!("Failed to parse upload form: {e}") })),
         )
     })? {
         let field_name = field.name().unwrap_or_default().to_string();
@@ -174,21 +173,23 @@ pub async fn upload_job(
                 })?);
             }
             "printer_model" => {
-                printer_model_str = Some(field.text().await.map_err(|e| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({ "error": format!("Invalid printer_model field: {e}") })),
-                    )
-                })?);
+                // Printer model is optional; defaults to A1
+                if let Ok(model) = field.text().await {
+                    printer_model_str = Some(model);
+                }
             }
             "file" => {
                 file_name = field.file_name().map(|s| s.to_string());
-                file_data = Some(field.bytes().await.map_err(|e| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({ "error": format!("Failed to read file: {e}") })),
-                    )
-                })?);
+                match field.bytes().await {
+                    Ok(bytes) => file_data = Some(bytes),
+                    Err(e) => {
+                        error!("failed to read file bytes: {e}");
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({ "error": format!("Failed to read file: {e}") })),
+                        ));
+                    }
+                }
             }
             _ => {
                 // Ignore unknown fields
@@ -215,12 +216,6 @@ pub async fn upload_job(
             Json(serde_json::json!({ "error": "Teacher is required" })),
         )
     })?;
-    let printer_model_str = printer_model_str.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "Printer model is required" })),
-        )
-    })?;
     let file_data = file_data.ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
@@ -233,6 +228,9 @@ pub async fn upload_job(
             Json(serde_json::json!({ "error": "File must have a name" })),
         )
     })?;
+
+    // Ensure printer_model_str has a value (should already default to "A1")
+    let printer_model_str = printer_model_str.unwrap_or_else(|| "A1".to_string());
 
     // Validate teacher
     let teacher_lower = teacher.to_lowercase();

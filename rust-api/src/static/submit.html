@@ -310,16 +310,6 @@
             </div>
 
             <div class="form-group">
-                <label for="printer_model">Printer Model <span class="required">*</span></label>
-                <select id="printer_model" name="printer_model" required>
-                    <option value="">Select printer model</option>
-                    <option value="A1">Bambu Lab A1</option>
-                    <option value="A1 Mini">Bambu Lab A1 Mini</option>
-                    <option value="P1S">Bambu Lab P1S</option>
-                </select>
-            </div>
-
-            <div class="form-group">
                 <label>Upload Model File <span class="required">*</span></label>
                 <div class="file-upload-area" id="dropZone">
                     <input type="file" id="file" name="file" accept=".stl,.3mf" required>
@@ -444,21 +434,18 @@
             const name = document.getElementById('name').value.trim();
             const classPeriod = document.getElementById('class_period').value.trim();
             const teacher = document.getElementById('teacher').value;
-            const printerModel = document.getElementById('printer_model').value;
             const file = fileInput.files[0];
 
             if (!name) { showError('Please enter your name.'); return; }
             if (!classPeriod) { showError('Please enter your class period.'); return; }
             if (!teacher) { showError('Please select a teacher.'); return; }
-            if (!printerModel) { showError('Please select a printer model.'); return; }
-            if (!file) { showError('Please upload a sliced file.'); return; }
+            if (!file) { showError('Please upload a model file.'); return; }
 
             // Build multipart form data
             const formData = new FormData();
             formData.append('name', name);
             formData.append('class_period', classPeriod);
             formData.append('teacher', teacher);
-            formData.append('printer_model', printerModel);
             formData.append('file', file);
 
             // Submit
@@ -484,16 +471,14 @@
                     fileNameEl.style.display = 'none';
                     fileSizeEl.style.display = 'none';
                 } else {
-                    // Server error (may include gcode validation failure)
+                    // Server error
                     let msg = data.error || 'Unknown error occurred.';
                     if (data.detected_printer) {
                         msg += `\n\nDetected printer in file: ${data.detected_printer}`;
                     }
                     showError(msg);
-                    if (msg.toLowerCase().includes('gcode') || msg.toLowerCase().includes('not compatible') || msg.toLowerCase().includes('invalid')) {
-                        dropZone.classList.add('error');
-                        dropZone.classList.remove('has-file');
-                    }
+                    dropZone.classList.add('error');
+                    dropZone.classList.remove('has-file');
                 }
             } catch (err) {
                 showError('Network error. Please check your connection and try again.');

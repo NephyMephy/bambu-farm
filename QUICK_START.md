@@ -132,7 +132,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/admin/users" `
 
 **Web Form (Recommended):** Open browser → **http://localhost:8080/submit**
 
-The form collects: Name, Class Period, Teacher (Johnson or Friesen), Printer Model (A1, A1 Mini, P1S), and the unsliced model file (.stl or .3mf). Upload only unsliced model files—sliced/gcode files are rejected. Files are saved under the Windows user's Documents folder in `BambuTasks` and renamed to `requestorname-jobid.extension`.
+The form collects: Name, Class Period, Teacher (Johnson or Friesen), and an unsliced model file (.stl or .3mf). Printer model defaults to A1. Files are saved under the Windows user's Documents folder in `BambuTasks` and renamed to `requestorname-jobid.extension`.
 
 **API (JSON):**
 ```bash
@@ -181,8 +181,7 @@ curl -X POST http://localhost:8080/api/v2/jobs/upload \
   -F "name=Alice Johnson" \
   -F "class_period=Period 2" \
   -F "teacher=Johnson" \
-  -F "printer_model=A1" \
-  -F "file=@bracket_assembly.stl"
+  -F "file=@model.stl"
 ```
 
 ```powershell
@@ -193,8 +192,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/api/v2/jobs/upload" `
     name = "Alice Johnson"
     class_period = "Period 2"
     teacher = "Johnson"
-    printer_model = "A1"
-    file = Get-Item -Path "bracket_assembly.stl"
+    file = Get-Item -Path "model.stl"
   }
 ```
 
@@ -309,7 +307,7 @@ Each printer card shows:
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/api/v2/jobs/submit` | None | Submit job via JSON (public) |
-| POST | `/api/v2/jobs/upload` | None | Submit job with file upload + gcode validation (public) |
+| POST | `/api/v2/jobs/upload` | None | Submit job with file upload (unsliced .stl or .3mf, printer_model optional, defaults to A1) (public) |
 | GET | `/api/v2/jobs/{id}` | None | Get job status (public) |
 | GET | `/api/v2/jobs/public/queue` | None | View queued jobs (public, limited fields) |
 | GET | `/api/v2/jobs` | Bearer | List all jobs (staff) |
