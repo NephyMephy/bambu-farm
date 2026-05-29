@@ -435,6 +435,8 @@
       </div>
       <div class="toolbar-right">
         <button type="button" class="toggle" id="auto-switch-toggle" onclick="toggleAutoSwitch()">Auto switch: Off</button>
+        <button type="button" class="pill" id="start-all" onclick="startAllStreams()">Start all streams</button>
+        <button type="button" class="pill" id="stop-all" onclick="stopAllStreams()">Stop all streams</button>
         <button type="button" class="refresh-btn" onclick="refresh()">Refresh now</button>
       </div>
     </div>
@@ -646,19 +648,43 @@ function updateAutoSwitchToggle() {
 }
 
 function ensureAutoSwitchTimer() {
-  if (autoSwitchTimer !== null) {
-    clearInterval(autoSwitchTimer);
-    autoSwitchTimer = null;
-  }
-
+  // Only create the timer if auto-switch is enabled and there are multiple pages.
+  // Don't recreate the timer on every render; that causes frequent refreshes to
+  // keep clearing the interval before it fires.
   if (!autoSwitchEnabled || pageCount() <= 1) {
+    if (autoSwitchTimer !== null) {
+      clearInterval(autoSwitchTimer);
+      autoSwitchTimer = null;
+    }
     return;
   }
+
+  if (autoSwitchTimer !== null) return; // already running
 
   autoSwitchTimer = setInterval(() => {
     currentPage = (currentPage + 1) % pageCount();
     render();
   }, AUTO_SWITCH_MS);
+}
+
+async function startAllStreams() {
+  try {
+    await api('/v1/streams/start', 'POST');
+    await refresh();
+  } catch (err) {
+    console.error('startAllStreams failed', err);
+    alert('Start all streams failed: ' + (err.message || err));
+  }
+}
+
+async function stopAllStreams() {
+  try {
+    await api('/v1/streams/stop', 'POST');
+    await refresh();
+  } catch (err) {
+    console.error('stopAllStreams failed', err);
+    alert('Stop all streams failed: ' + (err.message || err));
+  }
 }
 
 function refreshSnapshots() {
