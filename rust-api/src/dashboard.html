@@ -3,35 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bambu Farm Monitor</title>
+<title>Bambu Farm Dashboard</title>
 <style>
   :root {
     color-scheme: dark;
-    --bg: #071019;
-    --bg-accent: #0d1b2e;
-    --panel: rgba(13, 25, 41, 0.82);
-    --panel-strong: #11253c;
-    --panel-soft: rgba(22, 36, 58, 0.86);
-    --border: rgba(148, 176, 216, 0.18);
+    --bg: #060b14;
+    --bg-2: #0d1728;
+    --panel: rgba(14, 24, 41, 0.82);
+    --panel-2: rgba(21, 32, 52, 0.9);
+    --line: rgba(152, 172, 203, 0.16);
     --text: #eef4ff;
-    --muted: #93a8c8;
+    --muted: #96a9c7;
     --accent: #7dd3fc;
-    --accent-2: #8bffd0;
+    --accent-2: #a7f3d0;
+    --ok: #86efac;
     --warn: #fbbf24;
     --error: #fb7185;
-    --ok: #86efac;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
   html, body { min-height: 100%; }
   body {
     margin: 0;
-    font-family: "SF Pro Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     color: var(--text);
     background:
-      radial-gradient(circle at top left, rgba(125, 211, 252, 0.18), transparent 28%),
-      radial-gradient(circle at 85% 10%, rgba(139, 255, 208, 0.14), transparent 24%),
-      linear-gradient(160deg, var(--bg), var(--bg-accent));
+      radial-gradient(circle at top left, rgba(125, 211, 252, 0.18), transparent 26%),
+      radial-gradient(circle at 88% 8%, rgba(167, 243, 208, 0.14), transparent 22%),
+      linear-gradient(160deg, var(--bg), var(--bg-2));
   }
 
   body::before {
@@ -39,31 +38,35 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     background-size: 48px 48px;
-    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent 92%);
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 92%);
   }
 
   .shell {
     position: relative;
     z-index: 1;
-    max-width: 1600px;
+    max-width: 1720px;
     margin: 0 auto;
-    padding: 28px 20px 40px;
+    padding: 28px 20px 36px;
+  }
+
+  .hero,
+  .panel,
+  .card {
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel), rgba(11, 18, 31, 0.74));
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
   }
 
   .hero {
     display: flex;
     justify-content: space-between;
-    gap: 24px;
     align-items: end;
-    padding: 28px;
-    border: 1px solid var(--border);
+    gap: 20px;
     border-radius: 28px;
-    background: linear-gradient(180deg, rgba(18, 32, 54, 0.9), rgba(12, 22, 38, 0.72));
-    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
-    backdrop-filter: blur(16px);
+    padding: 26px 28px;
   }
 
   .eyebrow {
@@ -81,17 +84,16 @@
   }
 
   .hero h1 {
-    margin: 16px 0 10px;
-    font-size: clamp(30px, 5vw, 54px);
+    margin: 14px 0 8px;
+    font-size: clamp(32px, 5vw, 54px);
     line-height: 0.96;
     letter-spacing: -0.05em;
   }
 
   .hero p {
-    max-width: 760px;
+    max-width: 860px;
     margin: 0;
     color: var(--muted);
-    font-size: 15px;
     line-height: 1.6;
   }
 
@@ -103,17 +105,20 @@
     background: linear-gradient(180deg, rgba(13, 28, 46, 0.92), rgba(13, 25, 41, 0.68));
   }
 
-  .hero-side .label {
+  .hero-side .label,
+  .section-label,
+  .pill-label {
     color: var(--muted);
-    font-size: 12px;
-    text-transform: uppercase;
+    font-size: 11px;
     letter-spacing: 0.12em;
-    margin-bottom: 8px;
+    text-transform: uppercase;
   }
 
   .hero-side .value {
-    font-size: 18px;
-    font-weight: 700;
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
   }
 
   .hero-side .subvalue {
@@ -127,150 +132,139 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
-    margin: 18px 2px 16px;
+    gap: 14px;
+    margin: 16px 2px 14px;
     color: var(--muted);
     font-size: 13px;
   }
 
-  .toolbar button {
+  .toolbar-left,
+  .toolbar-right,
+  .tab-strip,
+  .status-pills,
+  .card-head,
+  .card-badges,
+  .field-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .toolbar-left,
+  .status-pills,
+  .card-badges {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-right {
+    gap: 12px;
+  }
+
+  .pill,
+  .tab,
+  .toggle,
+  .refresh-btn {
     appearance: none;
-    border: 1px solid rgba(125, 211, 252, 0.22);
+    border: 1px solid rgba(125, 211, 252, 0.18);
     background: rgba(125, 211, 252, 0.08);
     color: var(--text);
     border-radius: 999px;
     padding: 10px 14px;
-    font-weight: 600;
+    font: inherit;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 180ms ease;
+    transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
   }
 
-  .toolbar button:hover:not(:disabled) {
+  .pill:hover,
+  .tab:hover,
+  .toggle:hover,
+  .refresh-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(125, 211, 252, 0.34);
     background: rgba(125, 211, 252, 0.14);
-    border-color: rgba(125, 211, 252, 0.36);
   }
 
-  .toolbar button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .card-actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid rgba(147, 168, 200, 0.1);
-  }
-
-  .card-actions button {
-    flex: 1;
-    appearance: none;
-    border: 1px solid rgba(125, 211, 252, 0.18);
-    background: rgba(125, 211, 252, 0.06);
-    color: var(--text);
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 140ms ease;
-  }
-
-  .card-actions button:hover:not(:disabled) {
-    background: rgba(125, 211, 252, 0.12);
-    border-color: rgba(125, 211, 252, 0.28);
-  }
-
-  .card-actions button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .card-actions button.start {
-    border-color: rgba(134, 239, 172, 0.2);
-    background: rgba(134, 239, 172, 0.08);
+  .pill.active,
+  .tab.active,
+  .toggle.active {
+    border-color: rgba(134, 239, 172, 0.34);
+    background: rgba(134, 239, 172, 0.12);
     color: var(--ok);
   }
 
-  .card-actions button.start:hover:not(:disabled) {
-    background: rgba(134, 239, 172, 0.14);
-    border-color: rgba(134, 239, 172, 0.4);
+  .panel {
+    border-radius: 24px;
+    padding: 16px;
   }
 
-  .card-actions button.stop {
-    border-color: rgba(251, 113, 133, 0.2);
-    background: rgba(251, 113, 133, 0.08);
-    color: var(--error);
+  .status-pills {
+    justify-content: space-between;
+    margin-bottom: 14px;
   }
 
-  .card-actions button.stop:hover:not(:disabled) {
-    background: rgba(251, 113, 133, 0.14);
-    border-color: rgba(251, 113, 133, 0.4);
-  }
-
-  .summary {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-    margin-bottom: 18px;
-  }
-
-  .summary-card {
-    padding: 18px;
-    border-radius: 22px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16);
-  }
-
-  .summary-card .kicker {
-    color: var(--muted);
+  .status-pills .pill {
+    padding: 8px 12px;
     font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
   }
 
-  .summary-card .number {
-    margin-top: 10px;
-    font-size: 32px;
-    font-weight: 800;
-    letter-spacing: -0.05em;
+  .tab-bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 16px;
   }
 
-  .summary-card .detail {
-    margin-top: 6px;
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1.4;
+  .tab-strip {
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .tab {
+    white-space: nowrap;
+    padding-inline: 16px;
+  }
+
+  .page-summary {
+    min-width: 190px;
+    text-align: right;
+  }
+
+  .page-summary .section-label {
+    margin-bottom: 4px;
+  }
+
+  .page-summary .page-value {
+    font-size: 14px;
+    font-weight: 700;
   }
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 14px;
   }
 
   .card {
     overflow: hidden;
-    border-radius: 26px;
-    border: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--panel), var(--panel-soft));
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
-    backdrop-filter: blur(14px);
+    border-radius: 24px;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 420px;
   }
 
   .card-head {
-    display: flex;
     justify-content: space-between;
     gap: 12px;
-    padding: 18px 18px 14px;
-    border-bottom: 1px solid rgba(148, 176, 216, 0.12);
+    padding: 16px 16px 14px;
+    border-bottom: 1px solid rgba(152, 172, 203, 0.12);
   }
 
   .printer-name {
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 800;
     letter-spacing: -0.04em;
   }
@@ -282,12 +276,10 @@
     line-height: 1.45;
   }
 
-  .badges {
-    display: flex;
-    flex-wrap: wrap;
+  .card-badges {
     justify-content: end;
+    align-items: start;
     gap: 8px;
-    align-content: start;
   }
 
   .badge {
@@ -298,7 +290,7 @@
     border-radius: 999px;
     border: 1px solid transparent;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -310,204 +302,111 @@
   .badge.accent { background: rgba(125, 211, 252, 0.14); color: var(--accent); border-color: rgba(125, 211, 252, 0.18); }
 
   .card-media {
-    aspect-ratio: 16 / 9;
-    background: #02060d;
-    border-bottom: 1px solid rgba(148, 176, 216, 0.12);
+    min-height: 225px;
+    background: #04070d;
+    border-bottom: 1px solid rgba(152, 172, 203, 0.12);
     position: relative;
   }
 
   .card-media iframe,
   .card-media img,
-  .card-media .empty-preview {
+  .card-media .snapshot-empty {
     width: 100%;
     height: 100%;
-    display: block;
     border: 0;
+    display: block;
   }
 
-  .card-media img { object-fit: cover; }
+  .card-media img {
+    object-fit: cover;
+  }
 
-  .empty-preview {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(238, 244, 255, 0.45);
-    font-size: 14px;
-    letter-spacing: 0.04em;
+  .snapshot-empty {
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    color: rgba(238, 244, 255, 0.46);
     text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 13px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .snapshot-empty strong {
+    color: var(--text);
+    font-size: 16px;
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   .card-body {
-    padding: 18px;
     display: grid;
     gap: 14px;
+    padding: 16px;
+    align-content: start;
   }
 
-  .task-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    align-items: start;
-  }
-
-  .task-title {
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-  }
-
-  .task-subtitle {
-    margin-top: 6px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .task-info {
-    padding: 12px;
-    border-radius: 14px;
-    background: rgba(125, 211, 252, 0.06);
-    border: 1px solid rgba(125, 211, 252, 0.12);
-    display: grid;
-    gap: 6px;
-  }
-
-  .task-info-row {
-    display: flex;
+  .field-row {
     justify-content: space-between;
     gap: 12px;
-    align-items: baseline;
   }
 
-  .task-info-label {
-    color: var(--muted);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    min-width: 60px;
-  }
-
-  .task-info-value {
+  .field-row span,
+  .field-row strong {
     font-size: 14px;
-    font-weight: 600;
-    text-align: right;
   }
 
-  .progress-wrap {
-    display: grid;
-    gap: 8px;
-  }
-
-  .progress-labels {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
+  .field-row span {
     color: var(--muted);
-    font-size: 12px;
+    text-transform: uppercase;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .progress {
-    height: 12px;
-    border-radius: 999px;
-    background: rgba(147, 168, 200, 0.14);
-    overflow: hidden;
-    position: relative;
-  }
-
-  .progress > span {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 0%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    box-shadow: 0 0 22px rgba(125, 211, 252, 0.42);
-    transition: width 220ms ease;
-  }
-
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .metric {
-    padding: 12px;
-    border-radius: 18px;
-    background: rgba(8, 17, 29, 0.45);
-    border: 1px solid rgba(147, 168, 200, 0.1);
-  }
-
-  .metric .kicker {
-    color: var(--muted);
     font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
   }
 
-  .metric .value {
-    margin-top: 8px;
-    font-size: 16px;
+  .field-row strong {
+    text-align: right;
     font-weight: 700;
-  }
-
-  .temps {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .temp {
-    padding: 10px 12px;
-    border-radius: 16px;
-    background: rgba(8, 17, 29, 0.35);
-    border: 1px solid rgba(147, 168, 200, 0.1);
-  }
-
-  .temp .label {
-    color: var(--muted);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .temp .value {
-    margin-top: 6px;
-    font-size: 15px;
-    font-weight: 700;
-  }
-
-  .footer-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-    color: var(--muted);
-    font-size: 12px;
   }
 
   .empty {
-    margin-top: 18px;
-    padding: 48px 24px;
-    border-radius: 24px;
-    border: 1px dashed rgba(147, 168, 200, 0.24);
+    padding: 56px 20px;
+    border-radius: 20px;
+    border: 1px dashed rgba(147, 168, 200, 0.22);
     color: var(--muted);
     text-align: center;
     background: rgba(13, 25, 41, 0.42);
   }
 
-  @media (max-width: 920px) {
-    .hero, .toolbar { flex-direction: column; align-items: start; }
-    .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .metrics, .temps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .empty strong {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text);
+    font-size: 18px;
   }
 
-  @media (max-width: 640px) {
-    .shell { padding: 18px 14px 30px; }
+  @media (max-width: 960px) {
+    .hero,
+    .toolbar,
+    .tab-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .page-summary {
+      text-align: left;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .shell { padding: 18px 14px 28px; }
     .hero { padding: 20px; border-radius: 22px; }
-    .summary, .grid, .metrics, .temps { grid-template-columns: 1fr; }
-    .card-head { flex-direction: column; }
-    .badges { justify-content: start; }
+    .panel { padding: 12px; }
+    .grid { grid-template-columns: 1fr; }
+    .card { min-height: 380px; }
+    .card-head { flex-direction: column; align-items: start; }
+    .card-badges { justify-content: start; }
   }
 </style>
 </head>
@@ -515,69 +414,63 @@
   <div class="shell">
     <section class="hero">
       <div>
-        <div class="eyebrow">Read-only printer monitor</div>
+        <div class="eyebrow">Projector dashboard</div>
         <h1>Bambu Farm Dashboard</h1>
         <p>
-          Live printer status, task progress, temperatures, and stream state. Streams are managed by the API when
-          a print is active, so this view stays focused on monitoring rather than control.
+          Compact printer cards with one page showing at most eight printers at a time. Use the tab strip to jump
+          between pages or enable auto switch for a projector loop.
         </p>
       </div>
       <div class="hero-side">
-        <div class="label">System view</div>
-        <div class="value" id="hero-value">Waiting for telemetry</div>
-        <div class="subvalue" id="hero-subvalue">The dashboard polls the Rust API for printer snapshots and stream state.</div>
+        <div class="label">Current view</div>
+        <div class="value" id="hero-value">Waiting for printers</div>
+        <div class="subvalue" id="hero-subvalue">The dashboard polls the Rust API for printer summaries and refreshes snapshots automatically.</div>
       </div>
     </section>
 
     <div class="toolbar">
-      <div id="last-refresh">Refreshing...</div>
-      <div style="display: flex; gap: 12px;">
-        <button type="button" onclick="startAllStreams()">Start all streams</button>
-        <button type="button" onclick="stopAllStreams()">Stop all streams</button>
-        <button type="button" onclick="refresh()">Refresh now</button>
+      <div class="toolbar-left">
+        <div id="last-refresh">Refreshing...</div>
+        <div id="page-count-label">0 pages</div>
+      </div>
+      <div class="toolbar-right">
+        <button type="button" class="toggle" id="auto-switch-toggle" onclick="toggleAutoSwitch()">Auto switch: Off</button>
+        <button type="button" class="refresh-btn" onclick="refresh()">Refresh now</button>
       </div>
     </div>
 
-    <section class="summary">
-      <div class="summary-card">
-        <div class="kicker">Printers</div>
-        <div class="number" id="cnt-printers">0</div>
-        <div class="detail">Registered printers in the Rust API registry.</div>
+    <section class="panel">
+      <div class="status-pills">
+        <div class="pill" id="pill-printers">Printers: 0</div>
+        <div class="pill" id="pill-live">Live: 0</div>
+        <div class="pill" id="pill-task">Tasks: 0</div>
+        <div class="pill" id="pill-page">Page 0 / 0</div>
       </div>
-      <div class="summary-card">
-        <div class="kicker">Active jobs</div>
-        <div class="number" id="cnt-active-jobs">0</div>
-        <div class="detail">Printers currently reporting a running or paused task.</div>
-      </div>
-      <div class="summary-card">
-        <div class="kicker">Streams running</div>
-        <div class="number" id="cnt-running">0</div>
-        <div class="detail">Streams that are live right now, whether manual or auto-managed.</div>
-      </div>
-      <div class="summary-card">
-        <div class="kicker">Auto-managed</div>
-        <div class="number" id="cnt-auto">0</div>
-        <div class="detail">Streams the API is owning because a print job is active.</div>
-      </div>
-    </section>
 
-    <section id="grid" class="grid"></section>
-
-    <section id="queue-section" style="margin-top:32px;">
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;color:#1e293b;">� Master Job Status Tracker</h2>
-      <div id="queue-list" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-        <div class="empty" style="padding:20px;text-align:center;color:#94a3b8;">Loading jobs...</div>
+      <div class="tab-bar">
+        <div id="tab-strip" class="tab-strip"></div>
+        <div class="page-summary">
+          <div class="section-label">Tab mode</div>
+          <div class="page-value" id="page-summary">No printers loaded</div>
+        </div>
       </div>
+
+      <section id="grid" class="grid"></section>
     </section>
   </div>
 
 <script>
 const API = location.origin;
+const PAGE_SIZE = 8;
+const AUTO_SWITCH_MS = 8000;
+const SNAPSHOT_REFRESH_MS = 5000;
+
 let printers = [];
-let lastSignature = '';
+let currentPage = 0;
+let autoSwitchEnabled = false;
+let autoSwitchTimer = null;
 let refreshInFlight = false;
-const SNAPSHOT_INTERVAL_MS = 1000;
-let snapshotTimer = null;
+let lastSignature = '';
 
 async function api(path, method = 'GET') {
   const response = await fetch(API + path, { method });
@@ -614,7 +507,24 @@ function streamStateLabel(state) {
   }
 }
 
-function streamBadgeClass(state) {
+function taskStateLabel(printer) {
+  const job = printer.current_job || null;
+  const raw = (job?.status || printer.telemetry?.gcode_state || '').toLowerCase();
+  if (!raw) return 'Unknown';
+  switch (raw) {
+    case 'inprogress': return 'In Progress';
+    case 'printing': return 'Printing';
+    case 'queued': return 'Queued';
+    case 'collect': return 'Collect';
+    case 'pause': return 'Paused';
+    case 'finish': return 'Finished';
+    case 'completed': return 'Completed';
+    default:
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+}
+
+function printerStatusClass(state) {
   switch ((state || 'stopped').toLowerCase()) {
     case 'running': return 'ok';
     case 'starting': return 'warn';
@@ -623,246 +533,132 @@ function streamBadgeClass(state) {
   }
 }
 
-function formatPercent(value) {
-  return value === null || value === undefined ? '--' : `${Math.max(0, Math.min(100, value))}%`;
+function taskStatusClass(printer) {
+  const state = (printer.current_job?.status || printer.telemetry?.gcode_state || '').toLowerCase();
+  switch (state) {
+    case 'printing':
+    case 'inprogress':
+      return 'accent';
+    case 'queued':
+    case 'collect':
+      return 'warn';
+    case 'finish':
+    case 'completed':
+      return 'ok';
+    case 'error':
+      return 'error';
+    default:
+      return 'neutral';
+  }
 }
 
-function formatMinutes(value) {
-  if (value === null || value === undefined) return '--';
-  const total = Math.max(0, Math.round(value));
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  if (hours === 0) return `${minutes}m`;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-}
-
-function formatTemp(value) {
-  return value === null || value === undefined ? '--' : `${Number(value).toFixed(1)} C`;
-}
-
-function telemetryState(telemetry) {
-  const state = (telemetry?.gcode_state || '').toUpperCase();
-  if (!state) return 'Unknown';
-  return state;
-}
-
-function taskName(telemetry) {
-  return telemetry?.task_name || 'Idle';
-}
-
-function statusSummary(printer) {
-  const telemetry = printer.telemetry || {};
-  const streamState = printer.stream_state || 'stopped';
-  const streamLabel = streamStateLabel(streamState);
-  const taskState = telemetryState(telemetry);
-  const taskTitle = telemetry.task_name || (taskState === 'IDLE' || taskState === 'FINISH' ? 'Idle' : 'Printing');
-  const progress = telemetry.progress ?? 0;
-  const isPrinting = ['PREPARE', 'SLICING', 'RUNNING', 'PAUSE'].includes(taskState);
-  const updated = telemetry.updated_at ? new Date(telemetry.updated_at) : null;
-  const ageMinutes = updated ? Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000)) : null;
-
-  // Job queue info (student name + class period)
+function taskNameValue(printer) {
   const job = printer.current_job || null;
-
-  return {
-    streamState,
-    streamLabel,
-    taskState,
-    taskTitle,
-    progress,
-    isPrinting,
-    ageMinutes,
-    job,
-  };
+  return job?.filename || printer.telemetry?.task_name || 'Idle';
 }
 
-function renderPreview(printer, summary) {
-  const live = summary.streamState === 'running' || summary.streamState === 'starting';
+function printerStatusValue(printer) {
+  return streamStateLabel(printer.stream_state);
+}
+
+function pageCount() {
+  return Math.max(1, Math.ceil(printers.length / PAGE_SIZE));
+}
+
+function clampPage() {
+  const total = pageCount();
+  currentPage = Math.max(0, Math.min(currentPage, total - 1));
+  return total;
+}
+
+function currentPagePrinters() {
+  const start = currentPage * PAGE_SIZE;
+  return printers.slice(start, start + PAGE_SIZE);
+}
+
+function renderSnapshot(printer) {
+  const live = ['running', 'starting'].includes((printer.stream_state || '').toLowerCase());
   if (!live || !printer.stream_url) {
-    const stateText = summary.isPrinting ? 'Task active without stream' : 'No live stream';
-    return `<div class="empty-preview">${esc(stateText)}</div>`;
+    return `<div class="snapshot-empty"><strong>No live snapshot</strong><span>${esc(printerStatusValue(printer))}</span></div>`;
   }
 
   if ((printer.stream_type || '').toLowerCase() === 'proprietary') {
-    const snapshotUrl = `${API}/v1/printers/${encodeURIComponent(printer.id)}/stream/snapshot?t=${Date.now()}`;
-    return `<img class="snapshot" data-snapshot-base="${API}/v1/printers/${encodeURIComponent(printer.id)}/stream/snapshot" src="${snapshotUrl}" alt="${esc(printer.id)} snapshot">`;
+    const base = `${API}/v1/printers/${encodeURIComponent(printer.id)}/stream/snapshot`;
+    return `<img class="snapshot" data-snapshot-base="${base}" src="${base}?t=${Date.now()}" alt="${esc(printer.id)} snapshot">`;
   }
 
-  return `<iframe src="${esc(printer.stream_url)}" allow="autoplay"></iframe>`;
+  return `<iframe src="${esc(printer.stream_url)}" allow="autoplay" loading="lazy" title="${esc(printer.id)} stream"></iframe>`;
 }
 
 function renderCard(printer) {
-  const summary = statusSummary(printer);
-  const telemetry = printer.telemetry || {};
-  const progress = telemetry.progress ?? 0;
-  const hasProgress = telemetry.progress !== null && telemetry.progress !== undefined;
-  const totalLayers = telemetry.total_layer_num ?? null;
-  const currentLayer = telemetry.layer_num ?? null;
-  const taskText = taskName(telemetry);
-  const ageText = summary.ageMinutes === null ? 'Updated just now' : `Updated ${summary.ageMinutes}m ago`;
-  const autoLabel = printer.stream_auto_managed ? 'Auto-managed' : 'Manual';
-
-  // Print status badge styling
-  const printStatusBadge = summary.isPrinting ? 'accent' : (summary.taskState === 'FINISH' ? 'ok' : 'neutral');
-  const printStatusLabel = summary.isPrinting ? 'Printing' : (summary.taskState === 'FINISH' ? 'Finished' : summary.taskState);
-
-  // Task info from job queue
-  const job = summary.job;
-  const taskInfoHtml = job
-    ? `<div class="task-info">
-         <div class="task-info-row"><span class="task-info-label">Student</span><span class="task-info-value">${esc(job.student_name)}</span></div>
-         <div class="task-info-row"><span class="task-info-label">Period</span><span class="task-info-value">${esc(job.class_period)}</span></div>
-         <div class="task-info-row"><span class="task-info-label">File</span><span class="task-info-value">${esc(job.filename)}</span></div>
-       </div>`
-    : '';
+  const taskName = taskNameValue(printer);
+  const printerStatus = printerStatusValue(printer);
+  const taskStatus = taskStateLabel(printer);
 
   return `
     <article class="card" id="card-${esc(printer.id)}">
       <div class="card-head">
         <div>
           <div class="printer-name">${esc(printer.id)}</div>
-          <div class="printer-meta">${esc(printer.host)}<br>${esc(modelLabel(printer.model))} · ${esc(printer.stream_type || 'rtsp')} · ${esc(printer.device_id || '')}</div>
+          <div class="printer-meta">${esc(modelLabel(printer.model))}</div>
         </div>
-        <div class="badges">
-          <span class="badge ${printStatusBadge}">${esc(printStatusLabel)}</span>
-          <span class="badge ${streamBadgeClass(summary.streamState)}">${esc(summary.streamLabel)}</span>
-          <span class="badge ${printer.stream_auto_managed ? 'accent' : 'neutral'}">${esc(autoLabel)}</span>
+        <div class="card-badges">
+          <span class="badge ${printerStatusClass(printer.stream_state)}">${esc(printerStatus)}</span>
+          <span class="badge ${taskStatusClass(printer)}">${esc(taskStatus)}</span>
         </div>
       </div>
-
       <div class="card-media">
-        ${renderPreview(printer, summary)}
+        ${renderSnapshot(printer)}
       </div>
-
       <div class="card-body">
-        <div class="task-row">
-          <div>
-            <div class="task-title">${esc(taskText)}</div>
-            <div class="task-subtitle">${esc(ageText)}</div>
-          </div>
-          <div class="badge ${summary.isPrinting ? 'accent' : 'neutral'}">${esc(formatPercent(telemetry.progress))}</div>
+        <div class="field-row">
+          <span>Printer status</span>
+          <strong>${esc(printerStatus)}</strong>
         </div>
-
-        ${taskInfoHtml}
-
-        <div class="progress-wrap">
-          <div class="progress-labels">
-            <span>Progress</span>
-            <span>${esc(formatPercent(telemetry.progress))}</span>
-          </div>
-          <div class="progress"><span style="width: ${hasProgress ? Math.max(0, Math.min(100, progress)) : (summary.isPrinting ? 20 : 0)}%;"></span></div>
+        <div class="field-row">
+          <span>Task name</span>
+          <strong>${esc(taskName)}</strong>
         </div>
-
-        <div class="metrics">
-          <div class="metric">
-            <div class="kicker">Remaining</div>
-            <div class="value">${esc(formatMinutes(telemetry.remaining_minutes))}</div>
-          </div>
-          <div class="metric">
-            <div class="kicker">Layers</div>
-            <div class="value">${currentLayer !== null && totalLayers !== null ? `${esc(String(currentLayer))} / ${esc(String(totalLayers))}` : '--'}</div>
-          </div>
-          <div class="metric">
-            <div class="kicker">Stream</div>
-            <div class="value">${esc(summary.streamLabel)}</div>
-          </div>
-        </div>
-
-        <div class="temps">
-          <div class="temp">
-            <div class="label">Nozzle</div>
-            <div class="value">${esc(formatTemp(telemetry.nozzle_temper))} / ${esc(formatTemp(telemetry.nozzle_target_temper))}</div>
-          </div>
-          <div class="temp">
-            <div class="label">Bed</div>
-            <div class="value">${esc(formatTemp(telemetry.bed_temper))} / ${esc(formatTemp(telemetry.bed_target_temper))}</div>
-          </div>
-          <div class="temp">
-            <div class="label">Chamber</div>
-            <div class="value">${esc(formatTemp(telemetry.chamber_temper))}</div>
-          </div>
-        </div>
-
-        <div class="footer-line">
-          <span>${esc(printer.stream_url || 'No stream URL')}</span>
-          <span>${esc(summary.taskTitle)} · ${esc(streamStateLabel(printer.stream_state))}</span>
-        </div>
-
-        <div class="card-actions">
-          <button type="button" class="start" onclick="startStream('${esc(printer.id)}')">Start stream</button>
-          <button type="button" class="stop" onclick="stopStream('${esc(printer.id)}')">Stop stream</button>
+        <div class="field-row">
+          <span>Task status</span>
+          <strong>${esc(taskStatus)}</strong>
         </div>
       </div>
     </article>
   `;
 }
 
-function render() {
-  const grid = document.getElementById('grid');
-  const running = printers.filter(p => ['running', 'starting'].includes((p.stream_state || '').toLowerCase())).length;
-  const activeJobs = printers.filter(p => {
-    const state = telemetryState(p.telemetry);
-    return ['PREPARE', 'SLICING', 'RUNNING', 'PAUSE'].includes(state);
-  }).length;
-  const autoManaged = printers.filter(p => p.stream_auto_managed).length;
-  const stale = printers.filter(p => {
-    const updated = p.telemetry?.updated_at ? new Date(p.telemetry.updated_at) : null;
-    return updated ? (Date.now() - updated.getTime()) > 5 * 60 * 1000 : false;
-  }).length;
-
-  document.getElementById('cnt-printers').textContent = String(printers.length);
-  document.getElementById('cnt-active-jobs').textContent = String(activeJobs);
-  document.getElementById('cnt-running').textContent = String(running);
-  document.getElementById('cnt-auto').textContent = String(autoManaged);
-  document.getElementById('last-refresh').textContent = `Updated ${new Date().toLocaleTimeString()} · ${stale} stale`;
-  document.getElementById('hero-value').textContent = printers.length === 0 ? 'No printers registered' : `${printers.length} printers online`;
-  document.getElementById('hero-subvalue').textContent = printers.length === 0
-    ? 'Register printers through the API to begin monitoring.'
-    : `${activeJobs} active job(s), ${running} live stream(s), ${autoManaged} auto-managed stream(s).`;
-
+function renderTabs(totalPages) {
   if (printers.length === 0) {
-    grid.innerHTML = '<div class="empty"><strong>No printers registered.</strong><br>Add printers through the Rust API and they will appear here automatically.</div>';
-    lastSignature = 'empty';
+    return '';
+  }
+
+  return Array.from({ length: totalPages }, (_, index) => {
+    const active = index === currentPage;
+    return `<button type="button" class="tab ${active ? 'active' : ''}" onclick="setPage(${index})">Tab ${index + 1}</button>`;
+  }).join('');
+}
+
+function updateAutoSwitchToggle() {
+  const button = document.getElementById('auto-switch-toggle');
+  button.textContent = `Auto switch: ${autoSwitchEnabled ? 'On' : 'Off'}`;
+  button.classList.toggle('active', autoSwitchEnabled);
+}
+
+function ensureAutoSwitchTimer() {
+  if (autoSwitchTimer !== null) {
+    clearInterval(autoSwitchTimer);
+    autoSwitchTimer = null;
+  }
+
+  if (!autoSwitchEnabled || pageCount() <= 1) {
     return;
   }
 
-  const signature = printers
-    .map(p => [
-      p.id,
-      p.host,
-      p.model,
-      p.stream_type,
-      p.stream_state,
-      p.stream_url || '',
-      p.stream_auto_managed ? '1' : '0',
-      p.telemetry?.updated_at || '',
-      p.telemetry?.gcode_state || '',
-      p.telemetry?.task_name || '',
-      p.telemetry?.progress ?? '',
-      p.telemetry?.remaining_minutes ?? '',
-      p.telemetry?.layer_num ?? '',
-      p.telemetry?.total_layer_num ?? '',
-      p.telemetry?.nozzle_temper ?? '',
-      p.telemetry?.nozzle_target_temper ?? '',
-      p.telemetry?.bed_temper ?? '',
-      p.telemetry?.bed_target_temper ?? '',
-      p.telemetry?.chamber_temper ?? '',
-      p.current_job?.job_id || '',
-      p.current_job?.student_name || '',
-      p.current_job?.class_period || '',
-      p.current_job?.filename || '',
-      p.current_job?.status || '',
-      p.current_job?.progress_percent ?? '',
-    ].join('|'))
-    .sort()
-    .join('||');
-
-  if (signature === lastSignature) {
-    return;
-  }
-  lastSignature = signature;
-
-  grid.innerHTML = printers.map(renderCard).join('');
+  autoSwitchTimer = setInterval(() => {
+    currentPage = (currentPage + 1) % pageCount();
+    render();
+  }, AUTO_SWITCH_MS);
 }
 
 function refreshSnapshots() {
@@ -873,53 +669,72 @@ function refreshSnapshots() {
   });
 }
 
-function ensureSnapshotTimer() {
-  if (snapshotTimer !== null) return;
-  const delay = SNAPSHOT_INTERVAL_MS - (Date.now() % SNAPSHOT_INTERVAL_MS);
-  setTimeout(() => {
+function setPage(index) {
+  currentPage = index;
+  render();
+}
+
+function toggleAutoSwitch() {
+  autoSwitchEnabled = !autoSwitchEnabled;
+  render();
+}
+
+function render() {
+  const totalPages = clampPage();
+  const visiblePrinters = currentPagePrinters();
+  const livePrinters = printers.filter((printer) => ['running', 'starting'].includes((printer.stream_state || '').toLowerCase())).length;
+  const activeTasks = printers.filter((printer) => {
+    const state = (printer.current_job?.status || printer.telemetry?.gcode_state || '').toLowerCase();
+    return ['printing', 'inprogress', 'queued', 'collect', 'pause'].includes(state);
+  }).length;
+  const signature = JSON.stringify({
+    page: currentPage,
+    auto: autoSwitchEnabled,
+    printers: printers.map((printer) => [
+      printer.id,
+      printer.model,
+      printer.stream_state,
+      printer.stream_type,
+      printer.stream_url || '',
+      printer.telemetry?.gcode_state || '',
+      printer.telemetry?.task_name || '',
+      printer.current_job?.status || '',
+      printer.current_job?.filename || '',
+    ]),
+  });
+
+  if (signature === lastSignature) {
+    updateAutoSwitchToggle();
+    ensureAutoSwitchTimer();
     refreshSnapshots();
-    snapshotTimer = setInterval(refreshSnapshots, SNAPSHOT_INTERVAL_MS);
-  }, delay);
-}
-
-async function startStream(printerId) {
-  try {
-    await api(`/v1/printers/${encodeURIComponent(printerId)}/stream/start`, 'POST');
-    await refresh();
-  } catch (error) {
-    console.error('Failed to start stream:', error);
-    alert(`Failed to start stream: ${error.message || String(error)}`);
+    return;
   }
-}
 
-async function stopStream(printerId) {
-  try {
-    await api(`/v1/printers/${encodeURIComponent(printerId)}/stream/stop`, 'POST');
-    await refresh();
-  } catch (error) {
-    console.error('Failed to stop stream:', error);
-    alert(`Failed to stop stream: ${error.message || String(error)}`);
-  }
-}
+  lastSignature = signature;
 
-async function startAllStreams() {
-  try {
-    await api('/v1/streams/start', 'POST');
-    await refresh();
-  } catch (error) {
-    console.error('Failed to start all streams:', error);
-    alert(`Failed to start all streams: ${error.message || String(error)}`);
-  }
-}
+  document.getElementById('pill-printers').textContent = `Printers: ${printers.length}`;
+  document.getElementById('pill-live').textContent = `Live: ${livePrinters}`;
+  document.getElementById('pill-task').textContent = `Tasks: ${activeTasks}`;
+  document.getElementById('pill-page').textContent = `Page ${printers.length === 0 ? 0 : currentPage + 1} / ${printers.length === 0 ? 0 : totalPages}`;
+  document.getElementById('page-count-label').textContent = `${totalPages} page${totalPages === 1 ? '' : 's'} at 8 printers per page`;
+  document.getElementById('page-summary').textContent = printers.length === 0
+    ? 'No printers loaded'
+    : `Showing page ${currentPage + 1} of ${totalPages}`;
+  document.getElementById('hero-value').textContent = printers.length === 0
+    ? 'No printers registered'
+    : `${printers.length} printers online`;
+  document.getElementById('hero-subvalue').textContent = printers.length === 0
+    ? 'Register printers through the API to populate the dashboard.'
+    : `${visiblePrinters.length} printers on this page, ${livePrinters} live stream(s), ${activeTasks} active task(s).`;
+  document.getElementById('last-refresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  document.getElementById('tab-strip').innerHTML = renderTabs(totalPages);
+  document.getElementById('grid').innerHTML = printers.length === 0
+    ? '<div class="empty"><strong>No printers registered.</strong><br>Add printers through the Rust API and they will appear here automatically.</div>'
+    : visiblePrinters.map(renderCard).join('');
 
-async function stopAllStreams() {
-  try {
-    await api('/v1/streams/stop', 'POST');
-    await refresh();
-  } catch (error) {
-    console.error('Failed to stop all streams:', error);
-    alert(`Failed to stop all streams: ${error.message || String(error)}`);
-  }
+  updateAutoSwitchToggle();
+  ensureAutoSwitchTimer();
+  refreshSnapshots();
 }
 
 async function refresh() {
@@ -928,9 +743,6 @@ async function refresh() {
   try {
     printers = await api('/v1/printers');
     render();
-    renderQueue();
-    ensureSnapshotTimer();
-    refreshSnapshots();
   } catch (error) {
     console.error('refresh failed:', error);
     document.getElementById('hero-value').textContent = 'Refresh failed';
@@ -940,56 +752,9 @@ async function refresh() {
   }
 }
 
-async function renderQueue() {
-  try {
-    const jobs = await api('/api/v2/jobs/public/tracker');
-    const el = document.getElementById('queue-list');
-    if (!Array.isArray(jobs) || jobs.length === 0) {
-      el.innerHTML = '<div style="padding:20px;text-align:center;color:#475569;">No active jobs at the moment.</div>';
-      return;
-    }
-    
-    // Sort jobs: Queued first, then InProgress/Printing, then Collect
-    const statusOrder = { queued: 0, inprogress: 1, printing: 2, collect: 3, completed: 4 };
-    jobs.sort((a, b) => (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99));
-    
-    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Status</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Student</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Period</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">File</th>
-        <th style="padding:10px 12px;text-align:left;color:#1e293b;font-weight:700;">Printer</th>
-        <th style="padding:10px 12px;text-align:center;color:#1e293b;font-weight:700;">Progress</th>
-      </tr></thead><tbody>${
-        jobs.map(j => {
-          const statusColor = 
-            j.status === 'queued' ? '#94a3b8' :
-            j.status === 'inprogress' ? '#f59e0b' :
-            j.status === 'printing' ? '#3b82f6' :
-            j.status === 'collect' ? '#10b981' :
-            '#6b7280';
-          const statusLabel = j.status === 'inprogress' ? 'In Progress' : 
-                            j.status === 'collect' ? 'Collect' : 
-                            j.status.charAt(0).toUpperCase() + j.status.slice(1);
-          const printerDisplay = j.printer_id ? `<strong>${esc(j.printer_id)}</strong>` : '<em style="color:#94a3b8;">Unassigned</em>';
-          return `<tr style="border-bottom:1px solid #f1f5f9;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f0f9ff'" onmouseout="this.style.backgroundColor='transparent'">
-            <td style="padding:8px 12px;"><span style="background:${statusColor};color:#ffffff;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;">${esc(statusLabel)}</span></td>
-            <td style="padding:8px 12px;color:#334155;">${esc(j.student_name)}</td>
-            <td style="padding:8px 12px;color:#334155;">${esc(j.class_period)}</td>
-            <td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;" title="${esc(j.filename)}">${esc(j.filename)}</td>
-            <td style="padding:8px 12px;">${printerDisplay}</td>
-            <td style="padding:8px 12px;text-align:center;color:#334155;"><strong>${j.progress_percent}%</strong></td>
-          </tr>`
-        }).join('')
-      }</tbody></table>`;
-  } catch (e) {
-    console.error('tracker load error:', e);
-  }
-}
-
 refresh();
 setInterval(refresh, 3000);
+setInterval(refreshSnapshots, SNAPSHOT_REFRESH_MS);
 </script>
 </body>
 </html>

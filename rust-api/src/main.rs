@@ -41,6 +41,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(api::health))
         .route("/", get(api::dashboard))
+        .route("/dashboard", get(api::dashboard))
         .route("/admin", get(serve_admin_console))
         .route("/submit", get(serve_submit_form))
         .route("/auth/login", post(endpoints::login))
